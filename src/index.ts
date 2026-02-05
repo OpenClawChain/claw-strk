@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { RpcProvider, Account, Signer } from 'starknet';
+import { RpcProvider, Account, Signer, uint256, CallData } from 'starknet';
 import { parseUnits, formatUnits } from 'ethers';
 import { getEnv } from './env.js';
 import { SEPOLIA_TOKENS, parseTokenSymbol } from './tokens.js';
@@ -32,6 +32,37 @@ program
     console.log('Supported tokens (Sepolia):');
     for (const t of Object.values(SEPOLIA_TOKENS)) {
       console.log(`${t.symbol.padEnd(6)} ${t.address} (decimals=${t.decimals})`);
+    }
+  });
+
+program
+  .command('balance')
+  .description('Check ERC-20 balances for the configured account on Starknet Sepolia')
+  .option('--token <symbol...>', 'Token symbol(s) to check (default: all supported tokens)')
+  .action(async (opts) => {
+    const env = getEnv();
+    const provider = makeProvider();
+
+    const symbols: string[] = Array.isArray(opts.token) && opts.token.length
+      ? opts.token
+      : Object.keys(SEPOLIA_TOKENS);
+
+    for (const symRaw of symbols) {
+      const sym = parseTokenSymbol(String(symRaw));
+      const token = SEPOLIA_TOKENS[sym];
+
+      // Most Sepolia tokens are OZ ERC-20 v0.7 with `balance_of`.
+      const result: any = await provider.callContract({
+        contractAddress: token.address,
+        entrypoint: 'balance_of',
+        calldata: CallData.compile([env.STARKNET_ACCOUNT_ADDRESS]),
+      });
+
+      // starknet.js returns a string[] like [low, high] for u256.
+      const [low, high] = result as [string, string];
+      const bn = uint256.uint256ToBN({ low, high });
+
+      console.log(`${token.symbol.padEnd(6)} ${formatUnits(bn, token.decimals)} (raw=${bn.toString()})`);
     }
   });
 
