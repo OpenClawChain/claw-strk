@@ -1,4 +1,4 @@
-export type TokenSymbol = 'ETH' | 'STRK' | 'USDC' | 'USDT' | 'WBTC' | 'wstETH';
+export type TokenSymbol = 'ETH' | 'STRK' | 'USDC' | 'USDT' | 'WBTC' | 'wstETH' | 'EKUBO';
 
 export type TokenInfo = {
   symbol: TokenSymbol;
@@ -43,6 +43,12 @@ export const SEPOLIA_TOKENS: Record<TokenSymbol, TokenInfo> = {
     symbol: 'wstETH',
     name: 'Wrapped liquid staked Ether 2.0',
     address: '0x030de54c07e57818ae4a1210f2a3018a0b9521b8f8ae5206605684741650ac25',
+    decimals: 18,
+  },
+  EKUBO: {
+    symbol: 'EKUBO',
+    name: 'Ekubo Protocol Token',
+    address: '0x01fad7c03b2ea7fbef306764e20977f8d4eae6191b3a54e4514cc5fc9d19e569',
     decimals: 18,
   },
 };
