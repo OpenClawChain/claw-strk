@@ -1,0 +1,4 @@
+[sncast.default]
+url = "https://starknet-sepolia-rpc.publicnode.com"
+account = "default"
+accounts-file = "../../.claw-strk/accounts.json"
