@@ -221,11 +221,20 @@ program
         });
 
         const text = await response.text();
+
+        const txHash = settlement?.txHash as string | undefined;
+        const explorerBase = network === 'starknet-mainnet'
+          ? 'https://voyager.online'
+          : 'https://sepolia.voyager.online';
+        const explorerUrl = txHash ? `${explorerBase}/tx/${txHash}` : null;
+
         console.log(JSON.stringify({
           status: response.status,
           ok: response.ok,
           requirements,
           settlement,
+          txHash,
+          explorerUrl,
           body: text,
         }, null, 2));
       })
