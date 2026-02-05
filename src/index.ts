@@ -23,6 +23,8 @@ function makeAccount() {
 // Starknet ID Sepolia contract addresses (from https://docs.starknet.id/devs/contracts)
 const STARKID_SEPOLIA_NAMING =
   '0x0707f09bc576bd7cfee59694846291047e965f4184fe13dac62c56759b3b6fa7';
+const STARKID_SEPOLIA_PRICING =
+  '0x031a361e2fbdf71fd9a095f30ecddb160424e2dbfc4dd405a21c2f389b609e71';
 
 function normalizeStarkDomain(input: string): string {
   const s = input.trim();
@@ -163,14 +165,57 @@ program
           return;
         }
 
+        // --- SEND MODE ---
+        // Starknet ID buy() expects payment (on Sepolia: ETH ERC-20) via transfer_from,
+        // so we must approve the naming contract first.
+        //
+        // NOTE: we provide manual `resourceBounds` to avoid fee-estimation simulation issues
+        // seen with some Starknet ID calls on some RPC providers.
+        const pricingRes: any = await provider.callContract({
+          contractAddress: STARKID_SEPOLIA_PRICING,
+          entrypoint: 'compute_buy_price',
+          calldata: CallData.compile({ domain_len: decoded.length, days }),
+        });
+
+        const [paymentToken, priceLow, priceHigh] = pricingRes as [string, string, string];
+        const price = uint256.uint256ToBN({ low: priceLow, high: priceHigh });
+
+        const ethToken = SEPOLIA_TOKENS.ETH.address;
+        if (num.toBigInt(paymentToken) !== num.toBigInt(ethToken)) {
+          throw new Error(`Unsupported payment token for Sepolia buy: ${paymentToken}. Expected ETH token ${ethToken}`);
+        }
+
+        const approveCall = {
+          contractAddress: ethToken,
+          entrypoint: 'approve',
+          calldata: CallData.compile({
+            spender: naming,
+            amount: uint256.bnToUint256(price),
+          }),
+        } as any;
+
         const account = makeAccount();
-        const res = await account.execute(call);
-        console.log(JSON.stringify({
+
+        // Manual bounds (copied from a previously successful AVNU swap tx, with some headroom).
+        // These act as a fee cap; if too low, the network will reject.
+        const resourceBounds = {
+          l1_gas: { max_amount: 0n, max_price_per_unit: 0x63c16384338cn },
+          l2_gas: { max_amount: 0x2000000n, max_price_per_unit: 0x2cb417800n },
+          l1_data_gas: { max_amount: 0x800n, max_price_per_unit: 0x65b4d84987n },
+        };
+
+        const res = await account.execute([approveCall, call], { resourceBounds } as any);
+
+        const payload = {
           chainId,
           naming,
           name: `${decoded}.stark`,
+          priceWei: price.toString(),
+          resourceBounds,
           transactionHash: (res as any).transaction_hash ?? (res as any).transactionHash,
-        }, null, 2));
+        };
+
+        console.log(JSON.stringify(payload, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2));
       })
   );
 
