@@ -63,6 +63,69 @@ pnpm dev tokens
 
 ---
 
+## x402 payments (Starknet)
+
+`claw-strk` can act as an x402 **client** on Starknet Sepolia.
+
+It supports:
+- generating `X-PAYMENT` (base64) headers (`x402 pay`)
+- approving a facilitator to spend tokens (`x402 approve`)
+- making an HTTP request that auto-handles 402 → sign → retry (`x402 request`)
+
+### Local test backend (adipundir/starknet-x402)
+
+To run a local x402-protected API + facilitator (Sepolia settlement), you can use:
+`https://github.com/adipundir/starknet-x402`
+
+From your OpenClaw workspace:
+
+```bash
+cd /Users/peterclaw/.openclaw/workspace
+git clone https://github.com/adipundir/starknet-x402.git
+cd starknet-x402
+cp env.example .env.local
+# Optional: replace any dead RPC endpoints in .env.local
+npm ci
+npm run dev
+```
+
+This starts Next.js at `http://localhost:3000` and exposes:
+- Protected endpoint: `http://localhost:3000/api/protected/weather`
+- Facilitator: `http://localhost:3000/api/facilitator`
+
+Then, from `claw-strk`:
+
+```bash
+# one-time approve (spender = facilitator address from starknet-x402 .env.local)
+pnpm dev x402 approve --token STRK --spender $NEXT_PUBLIC_FACILITATOR_ADDRESS --amount 1
+
+# paid request end-to-end
+pnpm dev x402 request \
+  --url http://localhost:3000/api/protected/weather \
+  --network sepolia \
+  --facilitator http://localhost:3000/api/facilitator
+```
+
+### Commands
+
+Generate a payment header (no HTTP):
+
+```bash
+pnpm dev x402 pay --to 0xPAYTO --token STRK --amount 0.01 --network sepolia
+```
+
+Approve facilitator:
+
+```bash
+pnpm dev x402 approve --token STRK --spender 0xFACILITATOR --amount 1
+```
+
+Make a paid request:
+
+```bash
+pnpm dev x402 request --url https://your.api/paid --network sepolia --facilitator https://your.facilitator
+```
+
 ## Starknet ID (StarknetID)
 
 This CLI includes basic Starknet ID helpers so an agent can associate itself with a `.stark` name.
