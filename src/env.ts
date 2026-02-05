@@ -5,7 +5,7 @@ const EnvSchema = z.object({
   STARKNET_ACCOUNT_ADDRESS: z.string().min(10),
   STARKNET_PRIVATE_KEY: z.string().min(10),
   // Default RPC: community public endpoint; override if you have your own.
-  STARKNET_RPC_URL: z.string().url().default('https://starknet-sepolia.public.blastapi.io/rpc/v0_7'),
+  STARKNET_RPC_URL: z.string().url().default('https://starknet-sepolia-rpc.publicnode.com'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
