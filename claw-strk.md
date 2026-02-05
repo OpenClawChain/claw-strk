@@ -1,60 +1,160 @@
 # claw-strk (skill)
 
-A minimal Starknet Sepolia swap skill for agents, backed by the `claw-strk` CLI.
+Swap tokens on **Starknet Sepolia testnet** using **AVNU** routing via the `claw-strk` CLI.
+
+This is a *single-repo* CLI project (not a monorepo).
+
+---
+
+## What this CLI does
+
+- Fetches swap quotes from **AVNU Sepolia API**: `https://sepolia.api.avnu.fi`
+- Executes swaps on **Starknet Sepolia** by signing transactions with your local key
+- Can check transaction receipts
+- Can print balances for supported tokens
+
+---
+
+## Requirements
+
+- Node.js + pnpm
+- A funded Starknet Sepolia account:
+  - You need **Sepolia ETH on Starknet** for gas (and first-time account deployment)
+  - You need some of the token you want to sell (e.g. STRK)
+
+---
 
 ## Setup (one-time)
 
-1) Install deps / build:
+From the repo root:
 
 ```bash
 pnpm install
 pnpm build
 ```
 
-2) Configure env:
+Create `.env`:
 
 ```bash
 cp .env.example .env
-# edit .env with:
-# STARKNET_ACCOUNT_ADDRESS=
-# STARKNET_PRIVATE_KEY=
-# (optional) STARKNET_RPC_URL=
 ```
 
-## Supported tokens (Sepolia)
+Fill in:
 
 ```bash
-claw-strk tokens
+STARKNET_ACCOUNT_ADDRESS=0x...
+STARKNET_PRIVATE_KEY=0x...
+# optional; defaults to a public Sepolia RPC
+STARKNET_RPC_URL=https://starknet-sepolia-rpc.publicnode.com
 ```
+
+Safety:
+- `.env` is gitignored. **Do not paste private keys into chat.**
+
+---
+
+## List supported tokens
+
+```bash
+pnpm dev tokens
+```
+
+(Or after build/install globally: `claw-strk tokens`.)
+
+---
+
+## Check balances
+
+Show balances for *all* supported tokens for your configured account:
+
+```bash
+pnpm dev balance
+```
+
+Show balances for specific tokens:
+
+```bash
+pnpm dev balance --token ETH STRK USDC USDT WBTC wstETH EKUBO
+```
+
+---
 
 ## Quote a swap
 
-Quote selling 0.001 WBTC for USDC:
+Example: quote **STRK → USDC** selling `1` STRK:
 
 ```bash
-claw-strk quote --sell WBTC --buy USDC --amount 0.001
+pnpm dev quote --sell STRK --buy USDC --amount 1
 ```
+
+Example: quote **STRK → ETH**:
+
+```bash
+pnpm dev quote --sell STRK --buy ETH --amount 1
+```
+
+If you see `No quotes returned`, it usually means **no route/liquidity** is available on Sepolia for that pair.
+
+---
 
 ## Execute a swap
 
-```bash
-claw-strk swap --sell WBTC --buy USDC --amount 0.001 --slippage 0.5
-```
-
-Dry-run (no transaction):
+Example: swap **STRK → USDC** (real tx):
 
 ```bash
-claw-strk swap --sell WBTC --buy USDC --amount 0.001 --dry-run
+pnpm dev swap --sell STRK --buy USDC --amount 1 --slippage 0.5
 ```
+
+Dry-run (no transaction, just prints the best quote):
+
+```bash
+pnpm dev swap --sell STRK --buy USDC --amount 1 --slippage 0.5 --dry-run
+```
+
+Notes:
+- `--slippage` is a percent (e.g. `0.5` = 0.5%).
+- Each swap costs gas. Use small amounts on testnet.
+
+---
 
 ## Check transaction status
 
 ```bash
-claw-strk status --tx 0xYOUR_TX_HASH
+pnpm dev status --tx 0xYOUR_TX_HASH
 ```
 
-## Notes / Safety
+---
 
-- This CLI uses AVNU’s Sepolia API (`https://sepolia.api.avnu.fi`) to route swaps.
-- Your private key stays local in `.env`. Do not commit it.
-- If you see no quotes, it usually means the route has no liquidity on testnet right now.
+## Explorer (Voyager)
+
+Starknet Sepolia Voyager:
+- Account/contract: `https://sepolia.voyager.online/contract/<ACCOUNT_ADDRESS>`
+- Tx: `https://sepolia.voyager.online/tx/<TX_HASH>`
+
+---
+
+## Troubleshooting
+
+### RPC errors / provider down
+
+If the default RPC is flaky, set your own:
+
+```bash
+STARKNET_RPC_URL=...your_rpc...
+```
+
+### “Contract not found” for your account
+
+That usually means the account is **not deployed yet**. You must deploy the account contract once (costs ETH) before swaps can be executed.
+
+### “No quotes returned”
+
+No AVNU route exists on Sepolia for that pair right now.
+
+---
+
+## Security
+
+- Private keys must remain local.
+- Prefer creating a throwaway test account for demos.
+- Never commit `.env`.
