@@ -133,6 +133,20 @@ Initial price used:
 
 ## 5) CLI commands (concise usage)
 
+### Demo token commands (Sepolia ERC20)
+
+Create a token (choose `fixed` or `mintable`):
+- `claw-strk token create --kind fixed --name "Fixed Token" --symbol FIX --decimals 6 --initial 1000`
+- `claw-strk token create --kind mintable --name "Mint Token" --symbol MNT --decimals 6 --initial 0`
+
+Mint more (mintable only; owner-only):
+- `claw-strk token mint --token <address> --to <address> --amount 1000 --decimals 6`
+
+Notes:
+- `fixed` tokens have no `mint()` entrypoint (supply is set at deploy).
+- `mintable` tokens expose `mint(recipient, amount)` restricted to `owner`.
+
+
 ### Swap (AVNU)
 - Quote:
   - `claw-strk quote --sell <SYMBOL> --buy <SYMBOL> --amount <HUMAN>`
