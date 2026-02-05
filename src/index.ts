@@ -7,6 +7,7 @@ import { getEnv } from './env.js';
 import { SEPOLIA_TOKENS, parseTokenSymbol } from './tokens.js';
 import { fetchQuotes, doSwap } from './avnu.js';
 import { starknetId, constants, num } from 'starknet';
+import { approveErc20, parseNetwork, signX402Payment, x402Request } from './x402.js';
 
 function makeProvider() {
   const env = getEnv();
@@ -77,6 +78,130 @@ program
       console.log(`${token.symbol.padEnd(6)} ${formatUnits(bn, token.decimals)} (raw=${bn.toString()})`);
     }
   });
+
+program
+  .command('x402')
+  .description('x402 payments for Starknet (client-side)')
+  .addCommand(
+    new Command('pay')
+      .description('Generate a base64 X-PAYMENT header for a Starknet x402 payment (exact scheme)')
+      .requiredOption('--to <address>', 'Recipient address (payTo)')
+      .requiredOption('--token <symbol|address>', 'Token symbol (e.g. STRK) or token address')
+      .requiredOption('--amount <amount>', 'Amount in human units (e.g. 0.01)')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .option('--deadline <seconds>', 'Deadline seconds from now (default 300)', '300')
+      .action(async (opts) => {
+        const env = getEnv();
+        const provider = makeProvider();
+        const account = makeAccount();
+
+        const network = parseNetwork(String(opts.network));
+        const token = (() => {
+          const s = String(opts.token);
+          try {
+            return SEPOLIA_TOKENS[parseTokenSymbol(s)].address;
+          } catch {
+            return s;
+          }
+        })();
+
+        const tokenInfo = Object.values(SEPOLIA_TOKENS).find(t => num.toBigInt(t.address) === num.toBigInt(token));
+        const decimals = tokenInfo?.decimals ?? 18;
+
+        const sellAmount = BigInt(parseUnits(String(opts.amount), decimals));
+        const deadline = Math.floor(Date.now() / 1000) + Number(opts.deadline);
+
+        const { payment, paymentHeader } = await signX402Payment({
+          account,
+          network,
+          to: String(opts.to),
+          token,
+          amount: sellAmount.toString(),
+          deadline,
+        });
+
+        console.log(JSON.stringify({
+          from: env.STARKNET_ACCOUNT_ADDRESS,
+          network,
+          payment,
+          paymentHeader,
+          headerName: 'X-PAYMENT',
+        }, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2));
+      })
+  )
+  .addCommand(
+    new Command('approve')
+      .description('Approve a facilitator/spender to transfer_from your tokens (one-time setup for x402 settlement)')
+      .requiredOption('--token <symbol|address>', 'Token symbol (e.g. STRK) or token address')
+      .requiredOption('--spender <address>', 'Facilitator/spender address')
+      .requiredOption('--amount <amount>', 'Amount in human units to approve')
+      .action(async (opts) => {
+        const provider = makeProvider();
+        const account = makeAccount();
+
+        const token = (() => {
+          const s = String(opts.token);
+          try {
+            return SEPOLIA_TOKENS[parseTokenSymbol(s)].address;
+          } catch {
+            return s;
+          }
+        })();
+
+        const tokenInfo = Object.values(SEPOLIA_TOKENS).find(t => num.toBigInt(t.address) === num.toBigInt(token));
+        const decimals = tokenInfo?.decimals ?? 18;
+        const amountWei = BigInt(parseUnits(String(opts.amount), decimals));
+
+        const res = await approveErc20({
+          account,
+          tokenAddress: token,
+          spender: String(opts.spender),
+          amount: amountWei,
+        });
+
+        console.log(JSON.stringify({
+          token,
+          spender: String(opts.spender),
+          amountWei: amountWei.toString(),
+          transactionHash: (res as any).transaction_hash ?? (res as any).transactionHash,
+        }, null, 2));
+      })
+  )
+  .addCommand(
+    new Command('request')
+      .description('Make an HTTP request; if 402, auto-sign and retry with X-PAYMENT (optional facilitator verify/settle)')
+      .requiredOption('--url <url>', 'Resource URL')
+      .option('--method <method>', 'HTTP method (default GET)', 'GET')
+      .option('--data <json>', 'JSON body (for POST/PUT)')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .option('--facilitator <url>', 'Facilitator base URL (if provided, calls /verify and /settle)')
+      .action(async (opts) => {
+        const account = makeAccount();
+        const network = parseNetwork(String(opts.network));
+        const method = String(opts.method).toUpperCase();
+        const body = opts.data ? JSON.stringify(JSON.parse(String(opts.data))) : undefined;
+
+        const { response, settlement, requirements } = await x402Request(String(opts.url), {
+          account,
+          network,
+          facilitatorUrl: opts.facilitator ? String(opts.facilitator) : undefined,
+          requestInit: {
+            method,
+            headers: body ? { 'content-type': 'application/json' } : undefined,
+            body,
+          },
+        });
+
+        const text = await response.text();
+        console.log(JSON.stringify({
+          status: response.status,
+          ok: response.ok,
+          requirements,
+          settlement,
+          body: text,
+        }, null, 2));
+      })
+  );
 
 program
   .command('starkid')
