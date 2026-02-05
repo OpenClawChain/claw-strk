@@ -76,6 +76,8 @@ Notes:
 
 ## 4) Lending contracts (deployed on Starknet Sepolia)
 
+> Contracts source code has been split out to: https://github.com/OpenClawChain/claw-strk-contracts
+
 ### Public demo pool (recommended)
 
 The CLI ships with a built-in default demo pool id:

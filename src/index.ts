@@ -9,6 +9,7 @@ import { fetchQuotes, doSwap } from './avnu.js';
 import { starknetId, constants, num } from 'starknet';
 import { approveErc20, parseNetwork, signX402Payment, x402Request } from './x402.js';
 import { loadLendConfig, saveLendConfig, voyagerContractUrl, voyagerTxUrl, DEMO_POOLS, findDemoPool } from './lend.js';
+import { declareAndDeployToken, mintToken, TokenKind } from './token.js';
 import fs from 'node:fs';
 
 function tokenSymbolByAddress(addr: string): string {
@@ -335,157 +336,8 @@ program
                 : SEPOLIA_TOKENS[parseTokenSymbol(String(opts.borrow))].address)
             : cfg.borrowToken;
 
-        const artifactsDir = 'contracts/lend/target/dev';
-        const regSierra = JSON.parse(
-          fs.readFileSync(`${artifactsDir}/claw_strk_lend_ClawLendRegistry.contract_class.json`, 'utf8')
-        );
-        const regCasm = JSON.parse(
-          fs.readFileSync(`${artifactsDir}/claw_strk_lend_ClawLendRegistry.compiled_contract_class.json`, 'utf8')
-        );
-        const poolSierra = JSON.parse(
-          fs.readFileSync(`${artifactsDir}/claw_strk_lend_ClawLendPool.contract_class.json`, 'utf8')
-        );
-        const poolCasm = JSON.parse(
-          fs.readFileSync(`${artifactsDir}/claw_strk_lend_ClawLendPool.compiled_contract_class.json`, 'utf8')
-        );
-
-        const price = Number(opts.price);
-        if (!Number.isFinite(price) || price <= 0) throw new Error('Invalid --price');
-        const initialPriceE6 = BigInt(Math.floor(price * 1e6));
-
-        const waitSeconds = 120;
-
-        // Manual bounds (copied from a previously successful AVNU swap tx, with some headroom).
-        // These act as a fee cap; if too low, the network will reject.
-        const resourceBounds = {
-          l1_gas: { max_amount: 0n, max_price_per_unit: 0x63c16384338cn },
-          // Declare can be expensive; give lots of headroom.
-          l2_gas: { max_amount: 0x20000000n, max_price_per_unit: 0x2cb417800n },
-          l1_data_gas: { max_amount: 0x2000n, max_price_per_unit: 0x65b4d84987n },
-        };
-
-        async function waitTx(txHash: string) {
-          // starknet.js waitForTransaction can hang if RPC is flaky; enforce a hard timeout.
-          const timeout = new Promise((_r, rej) =>
-            setTimeout(() => rej(new Error(`Timeout waiting for tx ${txHash}`)), waitSeconds * 1000)
-          );
-          return Promise.race([account.waitForTransaction(txHash), timeout]);
-        }
-
-        // 1) declare registry
-        console.error('Declaring ClawLendRegistry...');
-        const regDeclare: any = await (account as any).declareIfNot({ contract: regSierra, casm: regCasm }, { resourceBounds } as any);
-        const regDeclareTx = regDeclare.transaction_hash;
-        const regClassHash = regDeclare.class_hash;
-        if (regDeclareTx && regDeclareTx !== '0x0' && regDeclareTx !== '') {
-          console.error(`  declare tx: ${regDeclareTx}`);
-          await waitTx(regDeclareTx);
-        } else {
-          console.error('  already declared');
-        }
-
-        // 2) deploy registry
-        console.error('Deploying ClawLendRegistry...');
-        const regDeploy: any = await (account as any).deployContract(
-          {
-            classHash: regClassHash,
-            constructorCalldata: CallData.compile({ owner: account.address }),
-          },
-          { resourceBounds } as any
-        );
-        const registryAddress = regDeploy.contract_address;
-        const registryTx = regDeploy.transaction_hash;
-        console.error(`  deploy tx: ${registryTx}`);
-        await waitTx(registryTx);
-
-        // 3) declare pool
-        console.error('Declaring ClawLendPool...');
-        const poolDeclare: any = await (account as any).declareIfNot({ contract: poolSierra, casm: poolCasm }, { resourceBounds } as any);
-        const poolDeclareTx = poolDeclare.transaction_hash;
-        const poolClassHash = poolDeclare.class_hash;
-        if (poolDeclareTx && poolDeclareTx !== '0x0' && poolDeclareTx !== '') {
-          console.error(`  declare tx: ${poolDeclareTx}`);
-          await waitTx(poolDeclareTx);
-        } else {
-          console.error('  already declared');
-        }
-
-        // 4) deploy pool
-        console.error('Deploying ClawLendPool...');
-        const poolDeploy: any = await (account as any).deployContract(
-          {
-            classHash: poolClassHash,
-            constructorCalldata: CallData.compile({
-              owner: account.address,
-              collateral_token: collateralToken,
-              borrow_token: borrowToken,
-              initial_price_e6: initialPriceE6.toString(),
-            }),
-          },
-          { resourceBounds } as any
-        );
-        const poolAddress = poolDeploy.contract_address;
-        const poolTx = poolDeploy.transaction_hash;
-        console.error(`  deploy tx: ${poolTx}`);
-        await waitTx(poolTx);
-
-        // 3) register pool in registry
-        const addRes: any = await account.execute({
-          contractAddress: registryAddress,
-          entrypoint: 'add_pool',
-          calldata: CallData.compile({ pool: poolAddress }),
-        });
-        const addTx = addRes.transaction_hash ?? addRes.transactionHash;
-
-        const collateralSymbol = tokenSymbolByAddress(collateralToken);
-        const borrowSymbol = tokenSymbolByAddress(borrowToken);
-        const poolId = `${String(collateralSymbol).toLowerCase()}-${String(borrowSymbol).toLowerCase()}`;
-
-        const newCfg = {
-          ...cfg,
-          network,
-          registryAddress,
-          poolAddress,
-          collateralToken,
-          borrowToken,
-          collateralSymbol,
-          borrowSymbol,
-          poolId,
-        };
-        const p = saveLendConfig(newCfg as any);
-
-        console.log(
-          JSON.stringify(
-            {
-              network,
-              savedConfig: p,
-              registryAddress,
-              poolAddress,
-              registry: {
-                deployTx: registryTx,
-                explorer: registryTx ? voyagerTxUrl(network, registryTx) : null,
-                contractExplorer: voyagerContractUrl(network, registryAddress),
-              },
-              pool: {
-                deployTx: poolTx,
-                explorer: poolTx ? voyagerTxUrl(network, poolTx) : null,
-                contractExplorer: voyagerContractUrl(network, poolAddress),
-              },
-              registryAddPoolTx: addTx,
-              registryAddPoolExplorer: addTx ? voyagerTxUrl(network, addTx) : null,
-              poolId,
-              poolLabel: `${collateralSymbol}/${borrowSymbol}`,
-              tokens: {
-                collateralSymbol,
-                collateralToken,
-                borrowSymbol,
-                borrowToken,
-              },
-              initialPriceE6: initialPriceE6.toString(),
-            },
-            null,
-            2
-          )
+        throw new Error(
+          'lend init (deploy) was moved out of claw-strk. Use the pre-deployed demo pool via --pool-id (default: strk-usdc).'
         );
         } catch (e: any) {
           console.error('lend init failed');
@@ -1219,6 +1071,93 @@ program
     const res = await doSwap({ account, quote: q, slippage });
     console.log('txHash:', (res as any).transactionHash);
   });
+
+program
+  .command('token')
+  .description('Deploy and manage demo ERC20 tokens (Sepolia)')
+  .addCommand(
+    new Command('create')
+      .description('Deploy an ERC20 token to Sepolia (fixed supply or mintable)')
+      .option('--kind <kind>', 'fixed | mintable (default: mintable)', 'mintable')
+      .requiredOption('--name <name>', 'Token name, e.g. "Demo USD"')
+      .requiredOption('--symbol <symbol>', 'Token symbol, e.g. DUSD')
+      .option('--decimals <n>', 'Token decimals (default: 18)', '18')
+      .option('--initial <amount>', 'Initial supply in human units (default: 0)', '0')
+      .option('--to <address>', 'Recipient for initial supply (default: your account)')
+      .option('--owner <address>', 'Owner/minter (mintable only; default: your account)')
+      .action(async (opts) => {
+        const kind = String(opts.kind).toLowerCase() as TokenKind;
+        if (kind !== 'fixed' && kind !== 'mintable') throw new Error('Invalid --kind. Use fixed|mintable');
+
+        const env = getEnv();
+        const account = makeAccount();
+
+        const decimals = Number(opts.decimals);
+        if (!Number.isFinite(decimals) || decimals < 0 || decimals > 255) throw new Error('Invalid --decimals');
+
+        const initialHuman = String(opts.initial ?? '0');
+        const initialSupply = BigInt(parseUnits(initialHuman, decimals).toString());
+
+        // Manual bounds (same style as lend) to avoid fee estimation instability.
+        const resourceBounds = {
+          l1_gas: { max_amount: 0n, max_price_per_unit: 0x63c16384338cn },
+          l2_gas: { max_amount: 0x20000000n, max_price_per_unit: 0x2cb417800n },
+          l1_data_gas: { max_amount: 0x2000n, max_price_per_unit: 0x65b4d84987n },
+        };
+
+        const res = await declareAndDeployToken({
+          account,
+          kind,
+          name: String(opts.name),
+          symbol: String(opts.symbol),
+          decimals,
+          initialSupply,
+          recipient: String(opts.to || env.STARKNET_ACCOUNT_ADDRESS),
+          owner: String(opts.owner || env.STARKNET_ACCOUNT_ADDRESS),
+          resourceBounds,
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network: 'starknet-sepolia',
+              kind,
+              name: String(opts.name),
+              symbol: String(opts.symbol),
+              decimals,
+              initialSupplyHuman: initialHuman,
+              contractAddress: res.contractAddress,
+              classHash: res.classHash,
+              declareTx: res.declareTx,
+              deployTx: res.deployTx,
+              explorer: `https://sepolia.voyager.online/contract/${res.contractAddress}`,  // voyager
+            },
+            null,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('mint')
+      .description('Mint tokens on a mintable ERC20 (owner-only)')
+      .requiredOption('--token <address>', 'Token contract address')
+      .requiredOption('--to <address>', 'Recipient address')
+      .requiredOption('--amount <amount>', 'Amount in human units')
+      .option('--decimals <n>', 'Token decimals (default: 18)', '18')
+      .action(async (opts) => {
+        const account = makeAccount();
+        const decimals = Number(opts.decimals);
+        const amount = BigInt(parseUnits(String(opts.amount), decimals).toString());
+        const res = await mintToken({
+          account,
+          tokenAddress: String(opts.token),
+          to: String(opts.to),
+          amount,
+        });
+        console.log(JSON.stringify({ txHash: res.txHash, explorerUrl: voyagerTxUrl('starknet-sepolia', res.txHash) }, null, 2));
+      })
+  );
 
 program
   .command('status')
