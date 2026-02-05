@@ -6,6 +6,7 @@ import { parseUnits, formatUnits } from 'ethers';
 import { getEnv } from './env.js';
 import { SEPOLIA_TOKENS, parseTokenSymbol } from './tokens.js';
 import { fetchQuotes, doSwap } from './avnu.js';
+import { starknetId, constants, num } from 'starknet';
 
 function makeProvider() {
   const env = getEnv();
@@ -17,6 +18,15 @@ function makeAccount() {
   const provider = makeProvider();
   const signer = new Signer(env.STARKNET_PRIVATE_KEY);
   return new Account({ provider, address: env.STARKNET_ACCOUNT_ADDRESS, signer });
+}
+
+// Starknet ID Sepolia contract addresses (from https://docs.starknet.id/devs/contracts)
+const STARKID_SEPOLIA_NAMING =
+  '0x0707f09bc576bd7cfee59694846291047e965f4184fe13dac62c56759b3b6fa7';
+
+function normalizeStarkDomain(input: string): string {
+  const s = input.trim();
+  return s.toLowerCase().endsWith('.stark') ? s.slice(0, -'.stark'.length) : s;
 }
 
 const program = new Command();
@@ -65,6 +75,104 @@ program
       console.log(`${token.symbol.padEnd(6)} ${formatUnits(bn, token.decimals)} (raw=${bn.toString()})`);
     }
   });
+
+program
+  .command('starkid')
+  .description('Starknet ID helpers (Sepolia)')
+  .addCommand(
+    new Command('whoami')
+      .description('Print the configured account address + its primary .stark name (if any)')
+      .action(async () => {
+        const env = getEnv();
+        const provider = makeProvider();
+        const chainId = constants.StarknetChainId.SN_SEPOLIA;
+        const naming = STARKID_SEPOLIA_NAMING;
+
+        let name: string | null = null;
+        try {
+          name = await provider.getStarkName(env.STARKNET_ACCOUNT_ADDRESS, naming);
+        } catch {
+          name = null;
+        }
+
+        console.log(JSON.stringify({
+          chainId,
+          namingContract: naming,
+          address: env.STARKNET_ACCOUNT_ADDRESS,
+          starkName: name,
+        }, null, 2));
+      })
+  )
+  .addCommand(
+    new Command('resolve')
+      .description('Resolve a .stark name to an address')
+      .requiredOption('--name <name>', 'e.g. bobio.stark')
+      .action(async (opts) => {
+        const provider = makeProvider();
+        const chainId = constants.StarknetChainId.SN_SEPOLIA;
+        const naming = STARKID_SEPOLIA_NAMING;
+
+        const name = normalizeStarkDomain(String(opts.name));
+        const addr = await provider.getAddressFromStarkName(name, naming);
+
+        console.log(JSON.stringify({ chainId, name: `${name}.stark`, address: addr }, null, 2));
+      })
+  )
+  .addCommand(
+    new Command('register')
+      .description('Register a .stark domain (onchain). WARNING: costs gas and likely requires ETH payment/approvals.')
+      .requiredOption('--name <name>', 'Domain to register, e.g. myagent.stark')
+      .option('--days <n>', 'Registration length in days (default: 365)', '365')
+      .option('--resolver <address>', 'Resolver contract address (default: your own account address)')
+      .option('--sponsor <address>', 'Sponsor address (default: 0x0)', '0x0')
+      .option('--discount-id <felt>', 'Discount id felt252 (default: 0x0)', '0x0')
+      .option('--metadata <felt>', 'Metadata felt252 (default: 0x0)', '0x0')
+      .option('--id <u128>', 'Identity id to associate (default: 0)', '0')
+      .option('--dry-run', 'Print calldata only (default)', true)
+      .option('--send', 'Actually send the transaction', false)
+      .action(async (opts) => {
+        const env = getEnv();
+        const provider = makeProvider();
+        const chainId = constants.StarknetChainId.SN_SEPOLIA;
+        const naming = STARKID_SEPOLIA_NAMING;
+
+        const decoded = normalizeStarkDomain(String(opts.name));
+        const domainFelt = starknetId.useEncoded(decoded); // felt
+
+        const days = Number(opts.days);
+        const id = BigInt(opts.id);
+        const resolver = String(opts.resolver || env.STARKNET_ACCOUNT_ADDRESS);
+
+        const call = {
+          contractAddress: naming,
+          entrypoint: 'buy',
+          calldata: CallData.compile({
+            id: num.toHex(id),
+            domain: num.toHex(domainFelt),
+            days,
+            resolver,
+            sponsor: String(opts.sponsor),
+            discount_id: String(opts.discountId ?? opts['discount-id'] ?? '0x0'),
+            metadata: String(opts.metadata),
+          }),
+        } as any;
+
+        if (!opts.send) {
+          console.log('DRY RUN (no tx sent). To send, add --send');
+          console.log(JSON.stringify({ chainId, naming, name: `${decoded}.stark`, call }, null, 2));
+          return;
+        }
+
+        const account = makeAccount();
+        const res = await account.execute(call);
+        console.log(JSON.stringify({
+          chainId,
+          naming,
+          name: `${decoded}.stark`,
+          transactionHash: (res as any).transaction_hash ?? (res as any).transactionHash,
+        }, null, 2));
+      })
+  );
 
 program
   .command('quote')

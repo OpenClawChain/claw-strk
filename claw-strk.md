@@ -63,6 +63,38 @@ pnpm dev tokens
 
 ---
 
+## Starknet ID (StarknetID)
+
+This CLI includes basic Starknet ID helpers so an agent can associate itself with a `.stark` name.
+
+### Check your current Starknet ID name
+
+```bash
+pnpm dev starkid whoami
+```
+
+### Resolve a name to an address
+
+```bash
+pnpm dev starkid resolve --name someone.stark
+```
+
+### Register a name (onchain)
+
+**Warning:** registering a `.stark` name costs gas and may require ETH payment/approval flows.
+
+Start with a dry-run (no tx sent):
+
+```bash
+pnpm dev starkid register --name myagent.stark --days 365
+```
+
+To actually send the tx (spends gas):
+
+```bash
+pnpm dev starkid register --name myagent.stark --days 365 --send
+```
+
 ## Check balances
 
 Show balances for *all* supported tokens for your configured account:
