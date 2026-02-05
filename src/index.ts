@@ -67,7 +67,15 @@ program
     const q = quotes[0] as any;
     const buyAmount = BigInt(q.buyAmount);
 
-    console.log(JSON.stringify({
+    const gasFeesSafe = Array.isArray(q.gasFees)
+      ? q.gasFees.map((g: any) => ({
+          ...g,
+          // AVNU SDK sometimes returns BigInt values; make JSON-safe.
+          amount: typeof g.amount === 'bigint' ? g.amount.toString() : g.amount,
+        }))
+      : q.gasFees;
+
+    const payload = {
       sell: sell.symbol,
       buy: buy.symbol,
       sellAmount: sellAmount.toString(),
@@ -77,8 +85,11 @@ program
       quoteId: q.quoteId,
       chainId: q.chainId,
       routes: q.routes,
-      gasFees: q.gasFees,
-    }, null, 2));
+      gasFees: gasFeesSafe,
+    };
+
+    // JSON-safe stringify (BigInt -> string anywhere)
+    console.log(JSON.stringify(payload, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2));
   });
 
 program
