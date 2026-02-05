@@ -36,7 +36,35 @@ const program = new Command();
 program
   .name('claw-strk')
   .description('Starknet Sepolia swap CLI (AVNU)')
-  .version('0.1.0');
+  .version('0.1.0')
+  // Used by env loader (src/env.ts) before commander parses options.
+  .option('--env <path>', 'Path to env file (default: ./\.env or ~/.claw-strk/.env)');
+
+program
+  .command('init')
+  .description('Create a default config env file at ~/.claw-strk/.env')
+  .option('--force', 'Overwrite if the file already exists', false)
+  .action(async (opts) => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+
+    const dir = path.join(os.homedir(), '.claw-strk');
+    const target = path.join(dir, '.env');
+
+    if (fs.existsSync(target) && !opts.force) {
+      console.log(`Already exists: ${target}`);
+      console.log('Use --force to overwrite.');
+      return;
+    }
+
+    fs.mkdirSync(dir, { recursive: true });
+
+    const template = `# claw-strk config\n#\n# Required\nSTARKNET_ACCOUNT_ADDRESS=0x...\nSTARKNET_PRIVATE_KEY=0x...\n\n# Optional\nSTARKNET_RPC_URL=https://starknet-sepolia-rpc.publicnode.com\n`;
+
+    fs.writeFileSync(target, template, { encoding: 'utf8' });
+    console.log(`Wrote: ${target}`);
+  });
 
 program
   .command('tokens')
