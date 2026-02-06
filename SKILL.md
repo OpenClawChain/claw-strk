@@ -101,7 +101,15 @@ claw-strk lend withdraw --pool-id strk-usdc --amount 1
 
 ### C) x402 payment (paywalled HTTP)
 
-Paywall endpoint example:
+Discover requirements (no payment):
+
+```bash
+claw-strk x402 discover \
+  --url https://stark-facilitator.openclawchain.org/api/protected/chainstatus
+```
+
+Paywall endpoint example (discover → pay → retry):
+
 ```bash
 claw-strk x402 request \
   --url https://stark-facilitator.openclawchain.org/api/protected/chainstatus \
