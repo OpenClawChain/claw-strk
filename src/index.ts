@@ -227,7 +227,7 @@ program
       .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
       .option(
         '--facilitator <url>',
-        'Facilitator base URL (default for sepolia: https://stark-facilitator.openclawchain.org/api/facilitator). If set, calls /verify and /settle'
+        'Optional facilitator base URL. If set, client calls /verify and /settle before fetching the resource (otherwise the paywall settles server-side).'
       )
       .option(
         '--spender <address>',
@@ -241,9 +241,9 @@ program
         const method = String(opts.method).toUpperCase();
         const body = opts.data ? JSON.stringify(JSON.parse(String(opts.data))) : undefined;
 
-        const defaultFacilitator = network === 'starknet-sepolia'
-          ? 'https://stark-facilitator.openclawchain.org/api/facilitator'
-          : undefined;
+        // Facilitator URL is optional here: most paywalls will settle server-side.
+        // If provided, client will call /verify + /settle before fetching the resource.
+        const defaultFacilitator = undefined;
 
         // Default spender is Bobio's hosted facilitator account on Sepolia.
         const defaultSpender = network === 'starknet-sepolia'
