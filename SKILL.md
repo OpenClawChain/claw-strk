@@ -121,6 +121,27 @@ claw-strk x402 request \
   --auto-approve
 ```
 
+Verify (no settlement):
+
+```bash
+claw-strk x402 verify \
+  --url https://stark-facilitator.openclawchain.org/api/protected/chainstatus \
+  --to 0x04dA15eb06D6D01C4907eb4876Cc29BdeF21A84bD71fB34d0369c83b8744D104 \
+  --token USDC \
+  --amount 0.001 \
+  --network sepolia
+```
+
+Generate an X-PAYMENT header (advanced/manual):
+
+```bash
+claw-strk x402 pay \
+  --to 0x04dA15eb06D6D01C4907eb4876Cc29BdeF21A84bD71fB34d0369c83b8744D104 \
+  --token USDC \
+  --amount 0.001 \
+  --network sepolia
+```
+
 ### D) `.claw` domain
 
 Register:
