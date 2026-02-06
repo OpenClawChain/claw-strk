@@ -171,36 +171,39 @@ export async function x402Request(url: string, opts: {
   });
 
   // Optional facilitator: verify+settle before getting resource.
-  // This matches adipundir/starknet-x402 middleware behavior.
+  // NOTE: Most deployments settle server-side (paywall middleware calls facilitator).
+  // Only use facilitatorUrl when you explicitly want *client-side* verify+settle.
   let settlement: any = undefined;
   let approveTxHash: string | undefined = undefined;
-  if (opts.facilitatorUrl) {
-    // If the facilitator settles via ERC20 transfer_from, the payer must approve a spender.
-    if (opts.autoApprove) {
-      if (!opts.facilitatorSpender) {
-        throw new Error('autoApprove requires facilitatorSpender');
-      }
 
-      const allowance = await getErc20Allowance({
-        provider: opts.provider,
-        tokenAddress: req.asset,
-        owner: opts.account.address,
-        spender: opts.facilitatorSpender,
-      });
-
-      const required = BigInt(amount);
-      if (allowance < required) {
-        const approveRes: any = await approveErc20({
-          account: opts.account,
-          tokenAddress: req.asset,
-          spender: opts.facilitatorSpender,
-          amount: required,
-        });
-        approveTxHash = approveRes.transaction_hash ?? approveRes.transactionHash;
-        if (approveTxHash) await opts.account.waitForTransaction(approveTxHash);
-      }
+  // If settlement uses ERC20 transfer_from, the payer must approve a spender.
+  // This is useful even when settling server-side.
+  if (opts.autoApprove) {
+    if (!opts.facilitatorSpender) {
+      throw new Error('autoApprove requires facilitatorSpender');
     }
 
+    const allowance = await getErc20Allowance({
+      provider: opts.provider,
+      tokenAddress: req.asset,
+      owner: opts.account.address,
+      spender: opts.facilitatorSpender,
+    });
+
+    const required = BigInt(amount);
+    if (allowance < required) {
+      const approveRes: any = await approveErc20({
+        account: opts.account,
+        tokenAddress: req.asset,
+        spender: opts.facilitatorSpender,
+        amount: required,
+      });
+      approveTxHash = approveRes.transaction_hash ?? approveRes.transactionHash;
+      if (approveTxHash) await opts.account.waitForTransaction(approveTxHash);
+    }
+  }
+
+  if (opts.facilitatorUrl) {
     const verifyRes = await fetch(`${opts.facilitatorUrl}/verify`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
