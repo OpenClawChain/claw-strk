@@ -220,6 +220,55 @@ program
       })
   )
   .addCommand(
+    new Command('discover')
+      .description('Discover x402 payment requirements for a paywalled resource (no payment)')
+      .requiredOption('--url <url>', 'Paywalled resource URL')
+      .action(async (opts) => {
+        const url = String(opts.url);
+        const res = await fetch(url);
+
+        if (res.status === 402) {
+          const json: any = await res.json();
+          const accepts = json?.accepts ?? [];
+
+          const acceptsPretty = accepts.map((a: any) => {
+            const tokenInfo = Object.values(SEPOLIA_TOKENS).find(t => num.toBigInt(t.address) === num.toBigInt(a.asset));
+            const decimals = tokenInfo?.decimals;
+            const symbol = tokenInfo?.symbol;
+
+            const amountAtomic = a.maxAmountRequired;
+            const amountHuman = decimals != null
+              ? formatUnits(BigInt(a.maxAmountRequired), decimals)
+              : null;
+
+            return {
+              ...a,
+              assetSymbol: symbol ?? null,
+              assetDecimals: decimals ?? null,
+              maxAmountHuman: amountHuman,
+              maxAmountAtomic: amountAtomic,
+            };
+          });
+
+          console.log(JSON.stringify({
+            status: res.status,
+            ok: false,
+            x402Version: json?.x402Version,
+            accepts: acceptsPretty,
+            error: json?.error ?? null,
+          }, null, 2));
+          return;
+        }
+
+        const text = await res.text();
+        console.log(JSON.stringify({
+          status: res.status,
+          ok: res.ok,
+          body: text,
+        }, null, 2));
+      })
+  )
+  .addCommand(
     new Command('request')
       .description('Make an HTTP request; if 402, auto-sign and retry with X-PAYMENT (optional facilitator verify/settle)')
       .requiredOption('--url <url>', 'Resource URL')
