@@ -229,6 +229,12 @@ program
         '--facilitator <url>',
         'Facilitator base URL (default for sepolia: https://stark-facilitator.openclawchain.org/api/facilitator). If set, calls /verify and /settle'
       )
+      .option(
+        '--spender <address>',
+        'ERC20 spender for settlement (default for sepolia: facilitator account). ' +
+          'If --auto-approve is set, CLI will approve exactly maxAmountRequired to this spender.'
+      )
+      .option('--auto-approve', 'If needed, approve exactly maxAmountRequired before settle', false)
       .action(async (opts) => {
         const account = makeAccount();
         const network = parseNetwork(String(opts.network));
@@ -239,10 +245,19 @@ program
           ? 'https://stark-facilitator.openclawchain.org/api/facilitator'
           : undefined;
 
-        const { response, settlement, requirements } = await x402Request(String(opts.url), {
+        // Default spender is Bobio's hosted facilitator account on Sepolia.
+        const defaultSpender = network === 'starknet-sepolia'
+          ? '0x04dA15eb06D6D01C4907eb4876Cc29BdeF21A84bD71fB34d0369c83b8744D104'
+          : undefined;
+
+        const provider = makeProvider();
+        const { response, settlement, requirements, approveTxHash } = await x402Request(String(opts.url), {
+          provider,
           account,
           network,
           facilitatorUrl: opts.facilitator ? String(opts.facilitator) : defaultFacilitator,
+          facilitatorSpender: opts.spender ? String(opts.spender) : defaultSpender,
+          autoApprove: Boolean(opts.autoApprove),
           requestInit: {
             method,
             headers: body ? { 'content-type': 'application/json' } : undefined,
@@ -256,12 +271,15 @@ program
         const explorerBase = network === 'starknet-mainnet'
           ? 'https://voyager.online'
           : 'https://sepolia.voyager.online';
+        const approveExplorerUrl = approveTxHash ? `${explorerBase}/tx/${approveTxHash}` : null;
         const explorerUrl = txHash ? `${explorerBase}/tx/${txHash}` : null;
 
         console.log(JSON.stringify({
           status: response.status,
           ok: response.ok,
           requirements,
+          approveTxHash,
+          approveExplorerUrl,
           settlement,
           txHash,
           explorerUrl,
