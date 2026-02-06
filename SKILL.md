@@ -80,6 +80,25 @@ Run the demo (deposit/borrow/repay/withdraw):
 claw-strk lend demo
 ```
 
+USDC borrow example (STRK collateral → borrow USDC):
+
+```bash
+# show pool + price
+claw-strk lend pool --pool-id strk-usdc
+
+# deposit 1 STRK as collateral
+claw-strk lend deposit --pool-id strk-usdc --amount 1
+
+# borrow a tiny amount of USDC (6 decimals)
+claw-strk lend borrow --pool-id strk-usdc --amount 0.005
+
+# repay
+claw-strk lend repay --pool-id strk-usdc --amount 0.005
+
+# withdraw collateral
+claw-strk lend withdraw --pool-id strk-usdc --amount 1
+```
+
 ### C) x402 payment (paywalled HTTP)
 
 Paywall endpoint example:
