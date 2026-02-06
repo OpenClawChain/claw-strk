@@ -225,17 +225,24 @@ program
       .option('--method <method>', 'HTTP method (default GET)', 'GET')
       .option('--data <json>', 'JSON body (for POST/PUT)')
       .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
-      .option('--facilitator <url>', 'Facilitator base URL (if provided, calls /verify and /settle)')
+      .option(
+        '--facilitator <url>',
+        'Facilitator base URL (default for sepolia: https://stark-facilitator.openclawchain.org/api/facilitator). If set, calls /verify and /settle'
+      )
       .action(async (opts) => {
         const account = makeAccount();
         const network = parseNetwork(String(opts.network));
         const method = String(opts.method).toUpperCase();
         const body = opts.data ? JSON.stringify(JSON.parse(String(opts.data))) : undefined;
 
+        const defaultFacilitator = network === 'starknet-sepolia'
+          ? 'https://stark-facilitator.openclawchain.org/api/facilitator'
+          : undefined;
+
         const { response, settlement, requirements } = await x402Request(String(opts.url), {
           account,
           network,
-          facilitatorUrl: opts.facilitator ? String(opts.facilitator) : undefined,
+          facilitatorUrl: opts.facilitator ? String(opts.facilitator) : defaultFacilitator,
           requestInit: {
             method,
             headers: body ? { 'content-type': 'application/json' } : undefined,
