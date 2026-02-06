@@ -144,12 +144,15 @@ export async function signX402Payment(args: {
 }
 
 export async function x402Request(url: string, opts: {
+  provider: RpcProvider;
   account: Account;
   network: StarknetX402Network;
   amountOverride?: string;
   facilitatorUrl?: string; // optional: call /verify + /settle like starknet-x402
+  facilitatorSpender?: string; // token spender used for settlement (usually facilitator account)
+  autoApprove?: boolean; // if true, approve exact amount required if allowance is insufficient
   requestInit?: RequestInit;
-}): Promise<{ response: Response; paymentHeader?: string; settlement?: any; requirements?: PaymentRequirements }> {
+}): Promise<{ response: Response; paymentHeader?: string; settlement?: any; requirements?: PaymentRequirements; approveTxHash?: string }> {
   const initial = await fetch(url, opts.requestInit);
   if (initial.status !== 402) return { response: initial };
 
@@ -170,7 +173,34 @@ export async function x402Request(url: string, opts: {
   // Optional facilitator: verify+settle before getting resource.
   // This matches adipundir/starknet-x402 middleware behavior.
   let settlement: any = undefined;
+  let approveTxHash: string | undefined = undefined;
   if (opts.facilitatorUrl) {
+    // If the facilitator settles via ERC20 transfer_from, the payer must approve a spender.
+    if (opts.autoApprove) {
+      if (!opts.facilitatorSpender) {
+        throw new Error('autoApprove requires facilitatorSpender');
+      }
+
+      const allowance = await getErc20Allowance({
+        provider: opts.provider,
+        tokenAddress: req.asset,
+        owner: opts.account.address,
+        spender: opts.facilitatorSpender,
+      });
+
+      const required = BigInt(amount);
+      if (allowance < required) {
+        const approveRes: any = await approveErc20({
+          account: opts.account,
+          tokenAddress: req.asset,
+          spender: opts.facilitatorSpender,
+          amount: required,
+        });
+        approveTxHash = approveRes.transaction_hash ?? approveRes.transactionHash;
+        if (approveTxHash) await opts.account.waitForTransaction(approveTxHash);
+      }
+    }
+
     const verifyRes = await fetch(`${opts.facilitatorUrl}/verify`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -200,7 +230,24 @@ export async function x402Request(url: string, opts: {
     },
   });
 
-  return { response: paid, paymentHeader, settlement, requirements: req };
+  return { response: paid, paymentHeader, settlement, requirements: req, approveTxHash };
+}
+
+export async function getErc20Allowance(args: {
+  provider: RpcProvider;
+  tokenAddress: string;
+  owner: string;
+  spender: string;
+}): Promise<bigint> {
+  const res: any = await args.provider.callContract({
+    contractAddress: args.tokenAddress,
+    entrypoint: 'allowance',
+    calldata: CallData.compile({ owner: args.owner, spender: args.spender }),
+  } as any);
+
+  // u256: [low, high]
+  const [low, high] = res as [string, string];
+  return uint256.uint256ToBN({ low, high });
 }
 
 export async function approveErc20(args: {
