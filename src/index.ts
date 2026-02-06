@@ -9,6 +9,17 @@ import { fetchQuotes, doSwap } from './avnu.js';
 import { starknetId, constants, num } from 'starknet';
 import { approveErc20, parseNetwork, signX402Payment, x402Request } from './x402.js';
 import { loadLendConfig, saveLendConfig, voyagerContractUrl, voyagerTxUrl, DEMO_POOLS, findDemoPool } from './lend.js';
+import { declareAndDeployToken, mintToken, TokenKind } from './token.js';
+import { declareAndDeployNft, mintErc721, parseU256, getErc721Balance } from './nft.js';
+import {
+  DEFAULT_CLAWID_REGISTRY,
+  declareAndDeployClawId,
+  getClawRecord,
+  nameOf,
+  registerClawName,
+  resolveClawName,
+  setClawMetadata,
+} from './clawid.js';
 import fs from 'node:fs';
 
 function tokenSymbolByAddress(addr: string): string {
@@ -30,6 +41,8 @@ function makeAccount() {
   const signer = new Signer(env.STARKNET_PRIVATE_KEY);
   return new Account({ provider, address: env.STARKNET_ACCOUNT_ADDRESS, signer });
 }
+
+const jsonBigint = (_k: string, v: any) => (typeof v === 'bigint' ? v.toString() : v);
 
 // Starknet ID Sepolia contract addresses (from https://docs.starknet.id/devs/contracts)
 const STARKID_SEPOLIA_NAMING =
@@ -335,157 +348,8 @@ program
                 : SEPOLIA_TOKENS[parseTokenSymbol(String(opts.borrow))].address)
             : cfg.borrowToken;
 
-        const artifactsDir = 'contracts/lend/target/dev';
-        const regSierra = JSON.parse(
-          fs.readFileSync(`${artifactsDir}/claw_strk_lend_ClawLendRegistry.contract_class.json`, 'utf8')
-        );
-        const regCasm = JSON.parse(
-          fs.readFileSync(`${artifactsDir}/claw_strk_lend_ClawLendRegistry.compiled_contract_class.json`, 'utf8')
-        );
-        const poolSierra = JSON.parse(
-          fs.readFileSync(`${artifactsDir}/claw_strk_lend_ClawLendPool.contract_class.json`, 'utf8')
-        );
-        const poolCasm = JSON.parse(
-          fs.readFileSync(`${artifactsDir}/claw_strk_lend_ClawLendPool.compiled_contract_class.json`, 'utf8')
-        );
-
-        const price = Number(opts.price);
-        if (!Number.isFinite(price) || price <= 0) throw new Error('Invalid --price');
-        const initialPriceE6 = BigInt(Math.floor(price * 1e6));
-
-        const waitSeconds = 120;
-
-        // Manual bounds (copied from a previously successful AVNU swap tx, with some headroom).
-        // These act as a fee cap; if too low, the network will reject.
-        const resourceBounds = {
-          l1_gas: { max_amount: 0n, max_price_per_unit: 0x63c16384338cn },
-          // Declare can be expensive; give lots of headroom.
-          l2_gas: { max_amount: 0x20000000n, max_price_per_unit: 0x2cb417800n },
-          l1_data_gas: { max_amount: 0x2000n, max_price_per_unit: 0x65b4d84987n },
-        };
-
-        async function waitTx(txHash: string) {
-          // starknet.js waitForTransaction can hang if RPC is flaky; enforce a hard timeout.
-          const timeout = new Promise((_r, rej) =>
-            setTimeout(() => rej(new Error(`Timeout waiting for tx ${txHash}`)), waitSeconds * 1000)
-          );
-          return Promise.race([account.waitForTransaction(txHash), timeout]);
-        }
-
-        // 1) declare registry
-        console.error('Declaring ClawLendRegistry...');
-        const regDeclare: any = await (account as any).declareIfNot({ contract: regSierra, casm: regCasm }, { resourceBounds } as any);
-        const regDeclareTx = regDeclare.transaction_hash;
-        const regClassHash = regDeclare.class_hash;
-        if (regDeclareTx && regDeclareTx !== '0x0' && regDeclareTx !== '') {
-          console.error(`  declare tx: ${regDeclareTx}`);
-          await waitTx(regDeclareTx);
-        } else {
-          console.error('  already declared');
-        }
-
-        // 2) deploy registry
-        console.error('Deploying ClawLendRegistry...');
-        const regDeploy: any = await (account as any).deployContract(
-          {
-            classHash: regClassHash,
-            constructorCalldata: CallData.compile({ owner: account.address }),
-          },
-          { resourceBounds } as any
-        );
-        const registryAddress = regDeploy.contract_address;
-        const registryTx = regDeploy.transaction_hash;
-        console.error(`  deploy tx: ${registryTx}`);
-        await waitTx(registryTx);
-
-        // 3) declare pool
-        console.error('Declaring ClawLendPool...');
-        const poolDeclare: any = await (account as any).declareIfNot({ contract: poolSierra, casm: poolCasm }, { resourceBounds } as any);
-        const poolDeclareTx = poolDeclare.transaction_hash;
-        const poolClassHash = poolDeclare.class_hash;
-        if (poolDeclareTx && poolDeclareTx !== '0x0' && poolDeclareTx !== '') {
-          console.error(`  declare tx: ${poolDeclareTx}`);
-          await waitTx(poolDeclareTx);
-        } else {
-          console.error('  already declared');
-        }
-
-        // 4) deploy pool
-        console.error('Deploying ClawLendPool...');
-        const poolDeploy: any = await (account as any).deployContract(
-          {
-            classHash: poolClassHash,
-            constructorCalldata: CallData.compile({
-              owner: account.address,
-              collateral_token: collateralToken,
-              borrow_token: borrowToken,
-              initial_price_e6: initialPriceE6.toString(),
-            }),
-          },
-          { resourceBounds } as any
-        );
-        const poolAddress = poolDeploy.contract_address;
-        const poolTx = poolDeploy.transaction_hash;
-        console.error(`  deploy tx: ${poolTx}`);
-        await waitTx(poolTx);
-
-        // 3) register pool in registry
-        const addRes: any = await account.execute({
-          contractAddress: registryAddress,
-          entrypoint: 'add_pool',
-          calldata: CallData.compile({ pool: poolAddress }),
-        });
-        const addTx = addRes.transaction_hash ?? addRes.transactionHash;
-
-        const collateralSymbol = tokenSymbolByAddress(collateralToken);
-        const borrowSymbol = tokenSymbolByAddress(borrowToken);
-        const poolId = `${String(collateralSymbol).toLowerCase()}-${String(borrowSymbol).toLowerCase()}`;
-
-        const newCfg = {
-          ...cfg,
-          network,
-          registryAddress,
-          poolAddress,
-          collateralToken,
-          borrowToken,
-          collateralSymbol,
-          borrowSymbol,
-          poolId,
-        };
-        const p = saveLendConfig(newCfg as any);
-
-        console.log(
-          JSON.stringify(
-            {
-              network,
-              savedConfig: p,
-              registryAddress,
-              poolAddress,
-              registry: {
-                deployTx: registryTx,
-                explorer: registryTx ? voyagerTxUrl(network, registryTx) : null,
-                contractExplorer: voyagerContractUrl(network, registryAddress),
-              },
-              pool: {
-                deployTx: poolTx,
-                explorer: poolTx ? voyagerTxUrl(network, poolTx) : null,
-                contractExplorer: voyagerContractUrl(network, poolAddress),
-              },
-              registryAddPoolTx: addTx,
-              registryAddPoolExplorer: addTx ? voyagerTxUrl(network, addTx) : null,
-              poolId,
-              poolLabel: `${collateralSymbol}/${borrowSymbol}`,
-              tokens: {
-                collateralSymbol,
-                collateralToken,
-                borrowSymbol,
-                borrowToken,
-              },
-              initialPriceE6: initialPriceE6.toString(),
-            },
-            null,
-            2
-          )
+        throw new Error(
+          'lend init (deploy) was moved out of claw-strk. Use the pre-deployed demo pool via --pool-id (default: strk-usdc).'
         );
         } catch (e: any) {
           console.error('lend init failed');
@@ -1219,6 +1083,446 @@ program
     const res = await doSwap({ account, quote: q, slippage });
     console.log('txHash:', (res as any).transactionHash);
   });
+
+program
+  .command('token')
+  .description('Deploy and manage demo ERC20 tokens (Sepolia)')
+  .addCommand(
+    new Command('create')
+      .description('Deploy an ERC20 token to Sepolia (fixed supply or mintable)')
+      .option('--kind <kind>', 'fixed | mintable (default: mintable)', 'mintable')
+      .requiredOption('--name <name>', 'Token name, e.g. "Demo USD"')
+      .requiredOption('--symbol <symbol>', 'Token symbol, e.g. DUSD')
+      .option('--decimals <n>', 'Token decimals (default: 18)', '18')
+      .option('--initial <amount>', 'Initial supply in human units (default: 0)', '0')
+      .option('--to <address>', 'Recipient for initial supply (default: your account)')
+      .option('--owner <address>', 'Owner/minter (mintable only; default: your account)')
+      .action(async (opts) => {
+        const kind = String(opts.kind).toLowerCase() as TokenKind;
+        if (kind !== 'fixed' && kind !== 'mintable') throw new Error('Invalid --kind. Use fixed|mintable');
+
+        const env = getEnv();
+        const account = makeAccount();
+
+        const decimals = Number(opts.decimals);
+        if (!Number.isFinite(decimals) || decimals < 0 || decimals > 255) throw new Error('Invalid --decimals');
+
+        const initialHuman = String(opts.initial ?? '0');
+        const initialSupply = BigInt(parseUnits(initialHuman, decimals).toString());
+
+        // Manual bounds (same style as lend) to avoid fee estimation instability.
+        const resourceBounds = {
+          l1_gas: { max_amount: 0n, max_price_per_unit: 0x63c16384338cn },
+          l2_gas: { max_amount: 0x20000000n, max_price_per_unit: 0x2cb417800n },
+          l1_data_gas: { max_amount: 0x2000n, max_price_per_unit: 0x65b4d84987n },
+        };
+
+        const res = await declareAndDeployToken({
+          account,
+          kind,
+          name: String(opts.name),
+          symbol: String(opts.symbol),
+          decimals,
+          initialSupply,
+          recipient: String(opts.to || env.STARKNET_ACCOUNT_ADDRESS),
+          owner: String(opts.owner || env.STARKNET_ACCOUNT_ADDRESS),
+          resourceBounds,
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network: 'starknet-sepolia',
+              kind,
+              name: String(opts.name),
+              symbol: String(opts.symbol),
+              decimals,
+              initialSupplyHuman: initialHuman,
+              contractAddress: res.contractAddress,
+              classHash: res.classHash,
+              declareTx: res.declareTx,
+              deployTx: res.deployTx,
+              explorer: `https://sepolia.voyager.online/contract/${res.contractAddress}`,  // voyager
+            },
+            null,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('mint')
+      .description('Mint tokens on a mintable ERC20 (owner-only)')
+      .requiredOption('--token <address>', 'Token contract address')
+      .requiredOption('--to <address>', 'Recipient address')
+      .requiredOption('--amount <amount>', 'Amount in human units')
+      .option('--decimals <n>', 'Token decimals (default: 18)', '18')
+      .action(async (opts) => {
+        const account = makeAccount();
+        const decimals = Number(opts.decimals);
+        const amount = BigInt(parseUnits(String(opts.amount), decimals).toString());
+        const res = await mintToken({
+          account,
+          tokenAddress: String(opts.token),
+          to: String(opts.to),
+          amount,
+        });
+        console.log(JSON.stringify({ txHash: res.txHash, explorerUrl: voyagerTxUrl('starknet-sepolia', res.txHash) }, null, 2));
+      })
+  );
+
+program
+  .command('claw')
+  .description('Manage .claw name registry on Starknet')
+  .addCommand(
+    new Command('deploy')
+      .description('Deploy the ClawIdRegistry contract')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const account = makeAccount();
+        const network = parseNetwork(String(opts.network));
+
+        const resourceBounds = {
+          l1_gas: { max_amount: 0n, max_price_per_unit: 0x63c16384338cn },
+          l2_gas: { max_amount: 0x20000000n, max_price_per_unit: 0x2cb417800n },
+          l1_data_gas: { max_amount: 0x2000n, max_price_per_unit: 0x65b4d84987n },
+        };
+
+        const res = await declareAndDeployClawId({ account, resourceBounds });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              contractAddress: res.contractAddress,
+              classHash: res.classHash,
+              declareTx: res.declareTx,
+              deployTx: res.deployTx,
+              explorer: voyagerContractUrl(network, res.contractAddress),
+              declareExplorer: res.declareTx ? voyagerTxUrl(network, res.declareTx) : null,
+              deployExplorer: voyagerTxUrl(network, res.deployTx),
+            },
+            jsonBigint,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('register')
+      .description('Register a .claw label (first-come-first-served)')
+      .requiredOption('--name <label|label.claw>', 'Label to register')
+      .option('--registry <address>', 'Registry contract address')
+      .option('--to <address>', 'Address to set as resolver (default: your account)')
+      .option('--metadata <string>', 'Metadata to store (default: empty)', '')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const env = getEnv();
+        const account = makeAccount();
+        const network = parseNetwork(String(opts.network));
+        const registryAddress = String(opts.registry || DEFAULT_CLAWID_REGISTRY[network] || '');
+        if (!registryAddress) throw new Error('Missing --registry (no default deployed registry for this network).');
+
+        const to = String(opts.to || env.STARKNET_ACCOUNT_ADDRESS);
+        const metadata = String(opts.metadata ?? '');
+
+        const res = await registerClawName({
+          account,
+          registryAddress,
+          label: String(opts.name),
+          addr: to,
+          metadata,
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              registry: registryAddress,
+              label: res.label,
+              key: res.key,
+              keyHex: num.toHex(res.key),
+              owner: env.STARKNET_ACCOUNT_ADDRESS,
+              addr: to,
+              metadata,
+              txHash: res.txHash,
+              explorerUrl: voyagerTxUrl(network, res.txHash),
+            },
+            jsonBigint,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('resolve')
+      .description('Resolve a .claw label to an address')
+      .requiredOption('--name <label|label.claw>', 'Label to resolve')
+      .option('--registry <address>', 'Registry contract address')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const provider = makeProvider();
+        const network = parseNetwork(String(opts.network));
+        const registryAddress = String(opts.registry || DEFAULT_CLAWID_REGISTRY[network] || '');
+        if (!registryAddress) throw new Error('Missing --registry (no default deployed registry for this network).');
+
+        const res = await resolveClawName({
+          provider,
+          registryAddress,
+          label: String(opts.name),
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              registry: registryAddress,
+              label: res.label,
+              key: res.key,
+              keyHex: num.toHex(res.key),
+              addr: res.addr,
+            },
+            jsonBigint,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('get')
+      .description('Get a full .claw record')
+      .requiredOption('--name <label|label.claw>', 'Label to look up')
+      .option('--registry <address>', 'Registry contract address')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const provider = makeProvider();
+        const network = parseNetwork(String(opts.network));
+        const registryAddress = String(opts.registry || DEFAULT_CLAWID_REGISTRY[network] || '');
+        if (!registryAddress) throw new Error('Missing --registry (no default deployed registry for this network).');
+
+        const res = await getClawRecord({
+          provider,
+          registryAddress,
+          label: String(opts.name),
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              registry: registryAddress,
+              label: res.label,
+              key: res.key,
+              keyHex: num.toHex(res.key),
+              owner: res.owner,
+              addr: res.addr,
+              metadata: res.metadata,
+            },
+            jsonBigint,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('set-metadata')
+      .description('Update metadata for a .claw label (owner-only)')
+      .requiredOption('--name <label|label.claw>', 'Label to update')
+      .requiredOption('--metadata <string>', 'New metadata')
+      .option('--registry <address>', 'Registry contract address')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const account = makeAccount();
+        const network = parseNetwork(String(opts.network));
+        const registryAddress = String(opts.registry || DEFAULT_CLAWID_REGISTRY[network] || '');
+        if (!registryAddress) throw new Error('Missing --registry (no default deployed registry for this network).');
+
+        const res = await setClawMetadata({
+          account,
+          registryAddress,
+          label: String(opts.name),
+          metadata: String(opts.metadata ?? ''),
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              registry: registryAddress,
+              label: res.label,
+              key: res.key,
+              keyHex: num.toHex(res.key),
+              txHash: res.txHash,
+              explorerUrl: voyagerTxUrl(network, res.txHash),
+            },
+            jsonBigint,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('whoami')
+      .description('Show your configured address and .claw name key')
+      .option('--registry <address>', 'Registry contract address')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const env = getEnv();
+        const provider = makeProvider();
+        const network = parseNetwork(String(opts.network));
+        const registryAddress = String(opts.registry || DEFAULT_CLAWID_REGISTRY[network] || '');
+        if (!registryAddress) throw new Error('Missing --registry (no default deployed registry for this network).');
+
+        const res = await nameOf({
+          provider,
+          registryAddress,
+          ownerAddress: env.STARKNET_ACCOUNT_ADDRESS,
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              registry: registryAddress,
+              owner: env.STARKNET_ACCOUNT_ADDRESS,
+              key: res.key,
+              keyHex: num.toHex(res.key),
+              hasName: res.key !== 0n,
+              label: null,
+              labelReversible: false,
+            },
+            jsonBigint,
+            2
+          )
+        );
+      })
+  );
+
+program
+  .command('nft')
+  .description('Deploy and manage demo ERC721 NFTs (Sepolia)')
+  .addCommand(
+    new Command('create')
+      .description('Deploy a mintable ERC721 NFT collection')
+      .requiredOption('--name <name>', 'Collection name, e.g. "Demo NFT"')
+      .requiredOption('--symbol <symbol>', 'Collection symbol, e.g. DNFT')
+      .option('--owner <address>', 'Owner/minter (default: your account)')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const env = getEnv();
+        const account = makeAccount();
+        const network = parseNetwork(String(opts.network));
+        const owner = String(opts.owner || env.STARKNET_ACCOUNT_ADDRESS);
+
+        const resourceBounds = {
+          l1_gas: { max_amount: 0n, max_price_per_unit: 0x63c16384338cn },
+          l2_gas: { max_amount: 0x20000000n, max_price_per_unit: 0x2cb417800n },
+          l1_data_gas: { max_amount: 0x2000n, max_price_per_unit: 0x65b4d84987n },
+        };
+
+        const res = await declareAndDeployNft({
+          account,
+          name: String(opts.name),
+          symbol: String(opts.symbol),
+          owner,
+          resourceBounds,
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              name: String(opts.name),
+              symbol: String(opts.symbol),
+              owner,
+              contractAddress: res.contractAddress,
+              classHash: res.classHash,
+              declareTx: res.declareTx,
+              deployTx: res.deployTx,
+              explorer: voyagerContractUrl(network, res.contractAddress),
+            },
+            null,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('mint')
+      .description('Mint an ERC721 token (owner-only)')
+      .requiredOption('--contract <address>', 'ERC721 contract address')
+      .requiredOption('--id <tokenId>', 'Token id (decimal or 0x...)')
+      .option('--to <address>', 'Recipient address (default: your account)')
+      .option('--entrypoint <name>', 'Entrypoint (default: mint)', 'mint')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const env = getEnv();
+        const account = makeAccount();
+        const network = parseNetwork(String(opts.network));
+        const tokenIdParsed = parseU256(String(opts.id));
+        const to = String(opts.to || env.STARKNET_ACCOUNT_ADDRESS);
+
+        const res = await mintErc721({
+          account,
+          contractAddress: String(opts.contract),
+          to,
+          tokenId: tokenIdParsed.value,
+          entrypoint: String(opts.entrypoint || 'mint'),
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              contract: String(opts.contract),
+              to,
+              tokenId: tokenIdParsed.value.toString(),
+              entrypoint: String(opts.entrypoint || 'mint'),
+              txHash: res.txHash,
+              explorerUrl: voyagerTxUrl(network, res.txHash),
+            },
+            null,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('balance')
+      .description('Check ERC721 balance_of for an owner (does not enumerate tokenIds)')
+      .requiredOption('--contract <address>', 'ERC721 contract address')
+      .option('--owner <address>', 'Owner address (default: your account)')
+      .option('--entrypoint <name>', 'Entrypoint (default: balance_of)', 'balance_of')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const env = getEnv();
+        const provider = makeProvider();
+        const network = parseNetwork(String(opts.network));
+        const owner = String(opts.owner || env.STARKNET_ACCOUNT_ADDRESS);
+
+        const bal = await getErc721Balance({
+          provider,
+          contractAddress: String(opts.contract),
+          owner,
+          entrypoint: String(opts.entrypoint || 'balance_of'),
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              contract: String(opts.contract),
+              owner,
+              balance: bal.toString(),
+              hasAny: bal > 0n,
+              entrypoint: String(opts.entrypoint || 'balance_of'),
+            },
+            null,
+            2
+          )
+        );
+      })
+  );
 
 program
   .command('status')

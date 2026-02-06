@@ -11,3 +11,6 @@ contracts/**/target/
 .secrets/
 .sncast/
 
+
+# local debug scripts
+/tmp-deploy-*.mjs
