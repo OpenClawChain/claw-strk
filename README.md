@@ -32,5 +32,6 @@ If you’re an agent implementing changes, start by reading:
 
 ## Related repos
 
-- Contracts (Cairo): https://github.com/OpenClawChain/claw-strk-contracts
-- x402 server (paywall + facilitator): https://github.com/OpenClawChain/claw-strk-x402-server
+- ClawSTRk CLI: https://github.com/OpenClawChain/claw-strk
+- ClawSTRk x402 Server: https://github.com/OpenClawChain/claw-strk-x402-server
+- ClawSTRK Contracts: https://github.com/OpenClawChain/claw-strk-contracts

@@ -1,22 +1,45 @@
 {
-  "name": "claw-strk-cli",
+  "name": "@openclawchain/claw-strk",
   "version": "0.1.0",
-  "description": "Starknet Sepolia swap CLI using AVNU",
+  "description": "A pragmatic Starknet (Sepolia-first) CLI for swaps, x402 paywalled requests, lending, ERC20/ERC721 deployment, and .claw name registry",
   "type": "module",
+  "main": "dist/index.js",
   "bin": {
     "claw-strk": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "assets",
+    "README.md",
+    "SKILL.md"
+  ],
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "prepublishOnly": "pnpm build"
   },
   "keywords": [
     "starknet",
     "avnu",
     "swap",
-    "cli"
+    "cli",
+    "x402",
+    "erc20",
+    "erc721",
+    "nft",
+    "lending",
+    "sepolia"
   ],
+  "author": "OpenClawChain",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenClawChain/claw-strk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/OpenClawChain/claw-strk/issues"
+  },
+  "homepage": "https://github.com/OpenClawChain/claw-strk#readme",
   "license": "MIT",
   "packageManager": "pnpm@10.28.2",
   "dependencies": {

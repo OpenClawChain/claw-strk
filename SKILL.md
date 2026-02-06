@@ -187,5 +187,6 @@ Pool id: `strk-usdc`
 | `.claw` registry | ClawIdRegistry | `0x18fe5d665fe78d1e9032d85c5e3fd6f99492a608d197f4cb048a2246f7d68eb` |
 
 Repo references:
-- Contracts source (Cairo): https://github.com/OpenClawChain/claw-strk-contracts
-- x402 server: https://github.com/OpenClawChain/claw-strk-x402-server
+- ClawSTRk CLI: https://github.com/OpenClawChain/claw-strk
+- ClawSTRk x402 Server: https://github.com/OpenClawChain/claw-strk-x402-server
+- ClawSTRK Contracts: https://github.com/OpenClawChain/claw-strk-contracts
