@@ -117,6 +117,26 @@ claw-strk x402 request \
   --auto-approve
 ```
 
+Show only the paywalled content (no JSON wrapper):
+
+```bash
+claw-strk x402 request \
+  --url https://stark-facilitator.openclawchain.org/api/protected/chainstatus \
+  --network sepolia \
+  --auto-approve \
+  --raw
+```
+
+Or print JSON + then print body:
+
+```bash
+claw-strk x402 request \
+  --url https://stark-facilitator.openclawchain.org/api/protected/chainstatus \
+  --network sepolia \
+  --auto-approve \
+  --print-body
+```
+
 Notes:
 - `x402 request` first calls the URL normally; if the server replies **402**, it reads the required payment details (`accepts[0]`) and retries with `X-PAYMENT`.
 - `--auto-approve` will approve **exactly** `maxAmountRequired` to the spender (one-time per amount).
