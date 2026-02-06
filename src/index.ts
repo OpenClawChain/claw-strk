@@ -8,6 +8,7 @@ import { SEPOLIA_TOKENS, parseTokenSymbol } from './tokens.js';
 import { fetchQuotes, doSwap } from './avnu.js';
 import { starknetId, constants, num } from 'starknet';
 import { approveErc20, parseNetwork, signX402Payment, x402Request } from './x402.js';
+import { Buffer } from 'node:buffer';
 import { loadLendConfig, saveLendConfig, voyagerContractUrl, voyagerTxUrl, DEMO_POOLS, findDemoPool } from './lend.js';
 import { declareAndDeployToken, mintToken, TokenKind } from './token.js';
 import { declareAndDeployNft, mintErc721, parseU256, getErc721Balance } from './nft.js';
@@ -284,6 +285,43 @@ program
           txHash,
           explorerUrl,
           body: text,
+        }, null, 2));
+      })
+  )
+  .addCommand(
+    new Command('verify')
+      .description('Validate an X-PAYMENT header against a facilitator (no settlement)')
+      .requiredOption('--url <url>', 'Paywalled resource URL (used to fetch 402 requirements)')
+      .requiredOption('--payment <base64>', 'Base64 X-PAYMENT value (paymentHeader)')
+      .option('--facilitator <url>', 'Facilitator base URL', 'https://stark-facilitator.openclawchain.org/api/facilitator')
+      .action(async (opts) => {
+        const url = String(opts.url);
+        const facilitator = String(opts.facilitator);
+        const paymentHeader = String(opts.payment);
+
+        // Fetch requirements (expect 402)
+        const initial = await fetch(url);
+        const status = initial.status;
+        const json = await initial.json().catch(() => null);
+        if (status !== 402) {
+          throw new Error(`Expected 402 from resource. Got status=${status} body=${JSON.stringify(json)}`);
+        }
+
+        const req = json?.accepts?.[0];
+        if (!req) throw new Error('402 response missing accepts[0] requirements');
+
+        const verifyRes = await fetch(`${facilitator}/verify`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ x402Version: 1, paymentHeader, paymentRequirements: req }),
+        });
+
+        const verifyJson = await verifyRes.json();
+        console.log(JSON.stringify({
+          facilitator,
+          resourceUrl: url,
+          requirements: req,
+          verify: verifyJson,
         }, null, 2));
       })
   );
