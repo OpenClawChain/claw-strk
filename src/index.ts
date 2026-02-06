@@ -235,6 +235,8 @@ program
           'If --auto-approve is set, CLI will approve exactly maxAmountRequired to this spender.'
       )
       .option('--auto-approve', 'If needed, approve exactly maxAmountRequired before settle', false)
+      .option('--print-body', 'Also print the response body after the JSON output', false)
+      .option('--raw', 'Print only the response body (no JSON wrapper)', false)
       .action(async (opts) => {
         const account = makeAccount();
         const network = parseNetwork(String(opts.network));
@@ -274,7 +276,7 @@ program
         const approveExplorerUrl = approveTxHash ? `${explorerBase}/tx/${approveTxHash}` : null;
         const explorerUrl = txHash ? `${explorerBase}/tx/${txHash}` : null;
 
-        console.log(JSON.stringify({
+        const out = {
           status: response.status,
           ok: response.ok,
           requirements,
@@ -284,7 +286,20 @@ program
           txHash,
           explorerUrl,
           body: text,
-        }, null, 2));
+        };
+
+        if (opts.raw) {
+          process.stdout.write(text);
+          if (!text.endsWith('\n')) process.stdout.write('\n');
+          return;
+        }
+
+        console.log(JSON.stringify(out, null, 2));
+
+        if (opts.printBody) {
+          process.stdout.write(text);
+          if (!text.endsWith('\n')) process.stdout.write('\n');
+        }
       })
   );
 
