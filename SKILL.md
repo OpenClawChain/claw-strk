@@ -133,7 +133,64 @@ Initial price used:
 
 ---
 
-## 5) CLI commands (concise usage)
+## 5) NFT contracts (deployed on Starknet Sepolia)
+
+### OpenClawMinion (CLAWSTRK)
+- Contract: `0x49782e9d0ce5eb2b1122fdb6de8498a6717389a8ce73768d69c3995c72d1ecd`
+- Class hash: `0x419394bce0dbc1d5c5d465add3bc5f3be06c7f7dc46923c6b12b726f5e96903`
+- Deploy tx: `0x191cca18b85ea97ce811ac0b46aa429b86475fa6c5b5c590af33fffb24ba4f5`
+- Explorer: https://sepolia.voyager.online/contract/0x49782e9d0ce5eb2b1122fdb6de8498a6717389a8ce73768d69c3995c72d1ecd
+
+Mint test (tokenId=1) → test account:
+- Mint tx: `0x1b5dff6aa01e073d4b2cfbf4a6a0a2e2162ad5211f6cc9caa1d470a53d568fb`
+- Explorer: https://sepolia.voyager.online/tx/0x1b5dff6aa01e073d4b2cfbf4a6a0a2e2162ad5211f6cc9caa1d470a53d568fb
+
+Commands:
+- Create collection:
+  - `claw-strk nft create --name "OpenClawMinion" --symbol "CLAWSTRK" --network sepolia`
+- Mint:
+  - `claw-strk nft mint --contract 0x49782e9d0ce5eb2b1122fdb6de8498a6717389a8ce73768d69c3995c72d1ecd --id 1 --network sepolia`
+- Check ownership (balance_of):
+  - `claw-strk nft balance --contract 0x49782e9d0ce5eb2b1122fdb6de8498a6717389a8ce73768d69c3995c72d1ecd`
+  - or for another address:
+    - `claw-strk nft balance --contract 0x49782e9d0ce5eb2b1122fdb6de8498a6717389a8ce73768d69c3995c72d1ecd --owner 0x...`
+
+---
+
+## 6) .claw registry (ClawIdRegistry)
+
+### Sepolia deployment (active)
+- Registry contract: `0x18fe5d665fe78d1e9032d85c5e3fd6f99492a608d197f4cb048a2246f7d68eb`
+- Class hash: `0x35bd1d6ef69482c6c3c7a6eaafa8d0de60b1dcce486392329763fec584ea3cc`
+- Declare tx: `0x798fd0f400b2c5780d3071106a4e28a317cf66dde4feb3a5587a0c565177292`
+- Deploy tx: `0x14d89e36ada0bef935b8870b8b6e78853f07d04ddec23c3d900c343970e47a1`
+- Explorer: https://sepolia.voyager.online/contract/0x18fe5d665fe78d1e9032d85c5e3fd6f99492a608d197f4cb048a2246f7d68eb
+
+Default registry constant was updated in:
+- `src/clawid.ts` → `DEFAULT_CLAWID_REGISTRY['starknet-sepolia']`
+
+### Test claim
+Claimed `openclawchain.claw` → test account:
+- Register tx: `0x23f4c8714372347abde8a14cd9bd28d870031effabc58d16196d3dba4099dff`
+- Explorer: https://sepolia.voyager.online/tx/0x23f4c8714372347abde8a14cd9bd28d870031effabc58d16196d3dba4099dff
+
+Commands:
+- Deploy (only needed if redeploying):
+  - `claw-strk claw deploy --network sepolia`
+- Register:
+  - `claw-strk claw register --name openclawchain.claw --metadata '{"name":"OpenClawChain"}' --network sepolia`
+- Resolve:
+  - `claw-strk claw resolve --name openclawchain --network sepolia`
+- Get full record:
+  - `claw-strk claw get --name openclawchain --network sepolia`
+- Whoami:
+  - `claw-strk claw whoami --network sepolia`
+- Set metadata (owner-only):
+  - `claw-strk claw set-metadata --name openclawchain --metadata '{"hello":"world"}' --network sepolia`
+
+---
+
+## 7) CLI commands (concise usage)
 
 ### Demo token commands (Sepolia ERC20)
 

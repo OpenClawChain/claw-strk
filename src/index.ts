@@ -10,6 +10,16 @@ import { starknetId, constants, num } from 'starknet';
 import { approveErc20, parseNetwork, signX402Payment, x402Request } from './x402.js';
 import { loadLendConfig, saveLendConfig, voyagerContractUrl, voyagerTxUrl, DEMO_POOLS, findDemoPool } from './lend.js';
 import { declareAndDeployToken, mintToken, TokenKind } from './token.js';
+import { declareAndDeployNft, mintErc721, parseU256, getErc721Balance } from './nft.js';
+import {
+  DEFAULT_CLAWID_REGISTRY,
+  declareAndDeployClawId,
+  getClawRecord,
+  nameOf,
+  registerClawName,
+  resolveClawName,
+  setClawMetadata,
+} from './clawid.js';
 import fs from 'node:fs';
 
 function tokenSymbolByAddress(addr: string): string {
@@ -31,6 +41,8 @@ function makeAccount() {
   const signer = new Signer(env.STARKNET_PRIVATE_KEY);
   return new Account({ provider, address: env.STARKNET_ACCOUNT_ADDRESS, signer });
 }
+
+const jsonBigint = (_k: string, v: any) => (typeof v === 'bigint' ? v.toString() : v);
 
 // Starknet ID Sepolia contract addresses (from https://docs.starknet.id/devs/contracts)
 const STARKID_SEPOLIA_NAMING =
@@ -1156,6 +1168,359 @@ program
           amount,
         });
         console.log(JSON.stringify({ txHash: res.txHash, explorerUrl: voyagerTxUrl('starknet-sepolia', res.txHash) }, null, 2));
+      })
+  );
+
+program
+  .command('claw')
+  .description('Manage .claw name registry on Starknet')
+  .addCommand(
+    new Command('deploy')
+      .description('Deploy the ClawIdRegistry contract')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const account = makeAccount();
+        const network = parseNetwork(String(opts.network));
+
+        const resourceBounds = {
+          l1_gas: { max_amount: 0n, max_price_per_unit: 0x63c16384338cn },
+          l2_gas: { max_amount: 0x20000000n, max_price_per_unit: 0x2cb417800n },
+          l1_data_gas: { max_amount: 0x2000n, max_price_per_unit: 0x65b4d84987n },
+        };
+
+        const res = await declareAndDeployClawId({ account, resourceBounds });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              contractAddress: res.contractAddress,
+              classHash: res.classHash,
+              declareTx: res.declareTx,
+              deployTx: res.deployTx,
+              explorer: voyagerContractUrl(network, res.contractAddress),
+              declareExplorer: res.declareTx ? voyagerTxUrl(network, res.declareTx) : null,
+              deployExplorer: voyagerTxUrl(network, res.deployTx),
+            },
+            jsonBigint,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('register')
+      .description('Register a .claw label (first-come-first-served)')
+      .requiredOption('--name <label|label.claw>', 'Label to register')
+      .option('--registry <address>', 'Registry contract address')
+      .option('--to <address>', 'Address to set as resolver (default: your account)')
+      .option('--metadata <string>', 'Metadata to store (default: empty)', '')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const env = getEnv();
+        const account = makeAccount();
+        const network = parseNetwork(String(opts.network));
+        const registryAddress = String(opts.registry || DEFAULT_CLAWID_REGISTRY[network] || '');
+        if (!registryAddress) throw new Error('Missing --registry (no default deployed registry for this network).');
+
+        const to = String(opts.to || env.STARKNET_ACCOUNT_ADDRESS);
+        const metadata = String(opts.metadata ?? '');
+
+        const res = await registerClawName({
+          account,
+          registryAddress,
+          label: String(opts.name),
+          addr: to,
+          metadata,
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              registry: registryAddress,
+              label: res.label,
+              key: res.key,
+              keyHex: num.toHex(res.key),
+              owner: env.STARKNET_ACCOUNT_ADDRESS,
+              addr: to,
+              metadata,
+              txHash: res.txHash,
+              explorerUrl: voyagerTxUrl(network, res.txHash),
+            },
+            jsonBigint,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('resolve')
+      .description('Resolve a .claw label to an address')
+      .requiredOption('--name <label|label.claw>', 'Label to resolve')
+      .option('--registry <address>', 'Registry contract address')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const provider = makeProvider();
+        const network = parseNetwork(String(opts.network));
+        const registryAddress = String(opts.registry || DEFAULT_CLAWID_REGISTRY[network] || '');
+        if (!registryAddress) throw new Error('Missing --registry (no default deployed registry for this network).');
+
+        const res = await resolveClawName({
+          provider,
+          registryAddress,
+          label: String(opts.name),
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              registry: registryAddress,
+              label: res.label,
+              key: res.key,
+              keyHex: num.toHex(res.key),
+              addr: res.addr,
+            },
+            jsonBigint,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('get')
+      .description('Get a full .claw record')
+      .requiredOption('--name <label|label.claw>', 'Label to look up')
+      .option('--registry <address>', 'Registry contract address')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const provider = makeProvider();
+        const network = parseNetwork(String(opts.network));
+        const registryAddress = String(opts.registry || DEFAULT_CLAWID_REGISTRY[network] || '');
+        if (!registryAddress) throw new Error('Missing --registry (no default deployed registry for this network).');
+
+        const res = await getClawRecord({
+          provider,
+          registryAddress,
+          label: String(opts.name),
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              registry: registryAddress,
+              label: res.label,
+              key: res.key,
+              keyHex: num.toHex(res.key),
+              owner: res.owner,
+              addr: res.addr,
+              metadata: res.metadata,
+            },
+            jsonBigint,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('set-metadata')
+      .description('Update metadata for a .claw label (owner-only)')
+      .requiredOption('--name <label|label.claw>', 'Label to update')
+      .requiredOption('--metadata <string>', 'New metadata')
+      .option('--registry <address>', 'Registry contract address')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const account = makeAccount();
+        const network = parseNetwork(String(opts.network));
+        const registryAddress = String(opts.registry || DEFAULT_CLAWID_REGISTRY[network] || '');
+        if (!registryAddress) throw new Error('Missing --registry (no default deployed registry for this network).');
+
+        const res = await setClawMetadata({
+          account,
+          registryAddress,
+          label: String(opts.name),
+          metadata: String(opts.metadata ?? ''),
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              registry: registryAddress,
+              label: res.label,
+              key: res.key,
+              keyHex: num.toHex(res.key),
+              txHash: res.txHash,
+              explorerUrl: voyagerTxUrl(network, res.txHash),
+            },
+            jsonBigint,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('whoami')
+      .description('Show your configured address and .claw name key')
+      .option('--registry <address>', 'Registry contract address')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const env = getEnv();
+        const provider = makeProvider();
+        const network = parseNetwork(String(opts.network));
+        const registryAddress = String(opts.registry || DEFAULT_CLAWID_REGISTRY[network] || '');
+        if (!registryAddress) throw new Error('Missing --registry (no default deployed registry for this network).');
+
+        const res = await nameOf({
+          provider,
+          registryAddress,
+          ownerAddress: env.STARKNET_ACCOUNT_ADDRESS,
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              registry: registryAddress,
+              owner: env.STARKNET_ACCOUNT_ADDRESS,
+              key: res.key,
+              keyHex: num.toHex(res.key),
+              hasName: res.key !== 0n,
+              label: null,
+              labelReversible: false,
+            },
+            jsonBigint,
+            2
+          )
+        );
+      })
+  );
+
+program
+  .command('nft')
+  .description('Deploy and manage demo ERC721 NFTs (Sepolia)')
+  .addCommand(
+    new Command('create')
+      .description('Deploy a mintable ERC721 NFT collection')
+      .requiredOption('--name <name>', 'Collection name, e.g. "Demo NFT"')
+      .requiredOption('--symbol <symbol>', 'Collection symbol, e.g. DNFT')
+      .option('--owner <address>', 'Owner/minter (default: your account)')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const env = getEnv();
+        const account = makeAccount();
+        const network = parseNetwork(String(opts.network));
+        const owner = String(opts.owner || env.STARKNET_ACCOUNT_ADDRESS);
+
+        const resourceBounds = {
+          l1_gas: { max_amount: 0n, max_price_per_unit: 0x63c16384338cn },
+          l2_gas: { max_amount: 0x20000000n, max_price_per_unit: 0x2cb417800n },
+          l1_data_gas: { max_amount: 0x2000n, max_price_per_unit: 0x65b4d84987n },
+        };
+
+        const res = await declareAndDeployNft({
+          account,
+          name: String(opts.name),
+          symbol: String(opts.symbol),
+          owner,
+          resourceBounds,
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              name: String(opts.name),
+              symbol: String(opts.symbol),
+              owner,
+              contractAddress: res.contractAddress,
+              classHash: res.classHash,
+              declareTx: res.declareTx,
+              deployTx: res.deployTx,
+              explorer: voyagerContractUrl(network, res.contractAddress),
+            },
+            null,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('mint')
+      .description('Mint an ERC721 token (owner-only)')
+      .requiredOption('--contract <address>', 'ERC721 contract address')
+      .requiredOption('--id <tokenId>', 'Token id (decimal or 0x...)')
+      .option('--to <address>', 'Recipient address (default: your account)')
+      .option('--entrypoint <name>', 'Entrypoint (default: mint)', 'mint')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const env = getEnv();
+        const account = makeAccount();
+        const network = parseNetwork(String(opts.network));
+        const tokenIdParsed = parseU256(String(opts.id));
+        const to = String(opts.to || env.STARKNET_ACCOUNT_ADDRESS);
+
+        const res = await mintErc721({
+          account,
+          contractAddress: String(opts.contract),
+          to,
+          tokenId: tokenIdParsed.value,
+          entrypoint: String(opts.entrypoint || 'mint'),
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              contract: String(opts.contract),
+              to,
+              tokenId: tokenIdParsed.value.toString(),
+              entrypoint: String(opts.entrypoint || 'mint'),
+              txHash: res.txHash,
+              explorerUrl: voyagerTxUrl(network, res.txHash),
+            },
+            null,
+            2
+          )
+        );
+      })
+  )
+  .addCommand(
+    new Command('balance')
+      .description('Check ERC721 balance_of for an owner (does not enumerate tokenIds)')
+      .requiredOption('--contract <address>', 'ERC721 contract address')
+      .option('--owner <address>', 'Owner address (default: your account)')
+      .option('--entrypoint <name>', 'Entrypoint (default: balance_of)', 'balance_of')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .action(async (opts) => {
+        const env = getEnv();
+        const provider = makeProvider();
+        const network = parseNetwork(String(opts.network));
+        const owner = String(opts.owner || env.STARKNET_ACCOUNT_ADDRESS);
+
+        const bal = await getErc721Balance({
+          provider,
+          contractAddress: String(opts.contract),
+          owner,
+          entrypoint: String(opts.entrypoint || 'balance_of'),
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              network,
+              contract: String(opts.contract),
+              owner,
+              balance: bal.toString(),
+              hasAny: bal > 0n,
+              entrypoint: String(opts.entrypoint || 'balance_of'),
+            },
+            null,
+            2
+          )
+        );
       })
   );
 
