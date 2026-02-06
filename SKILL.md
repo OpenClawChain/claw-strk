@@ -296,7 +296,48 @@ Or use:
 
 ---
 
-## 7) Known gotchas
+## 7) x402 (paywalled HTTP + facilitator)
+
+The CLI has a command group for x402 client-side payments:
+
+- `claw-strk x402 pay`
+- `claw-strk x402 approve`
+- `claw-strk x402 request`
+
+### Default facilitator endpoint (Sepolia)
+
+As of PR #3, `claw-strk x402 request` defaults to using the hosted facilitator for Sepolia:
+
+- Facilitator base: `https://stark-facilitator.openclawchain.org/api/facilitator`
+
+You can override it per call:
+
+- `--facilitator <url>`
+
+### Hosted paywall resource server
+
+The same host also serves the paywalled resource endpoints:
+
+- Paywalled base: `https://stark-facilitator.openclawchain.org/api/protected`
+- Example paywalled route: `GET https://stark-facilitator.openclawchain.org/api/protected/chainstatus`
+
+### Example usage
+
+One-time: approve the facilitator/spender to settle ERC20 transfers on your behalf (pick token + amount):
+
+- `claw-strk x402 approve --token USDC --spender <FACILITATOR_SPENDER_ADDRESS> --amount 1`
+
+Then request a paywalled resource (auto-pay on 402):
+
+- `claw-strk x402 request --url https://stark-facilitator.openclawchain.org/api/protected/chainstatus --network sepolia`
+
+If you want to use a custom facilitator:
+
+- `claw-strk x402 request --url <resource-url> --facilitator <facilitator-base-url> --network sepolia`
+
+---
+
+## 8) Known gotchas
 
 - **WBTC swaps on Sepolia**: AVNU returned **no quotes** into WBTC during testing, so WBTC collateral testing was blocked.
 - **USDC on Sepolia**: swap outputs can be extremely small; you may need to fund the pool with small amounts and keep borrow tests tiny.
