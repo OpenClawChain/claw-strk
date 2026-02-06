@@ -142,6 +142,41 @@ Notes:
 - `--auto-approve` will approve **exactly** `maxAmountRequired` to the spender (one-time per amount).
 - Override spender/facilitator if needed:
 
+Example discovery response (from the hosted paywall):
+
+```json
+{
+  "status": 402,
+  "ok": false,
+  "x402Version": 1,
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "starknet-sepolia",
+      "maxAmountRequired": "1000",
+      "resource": "/chainstatus",
+      "payTo": "0x04dA15eb06D6D01C4907eb4876Cc29BdeF21A84bD71fB34d0369c83b8744D104",
+      "asset": "0x053b40a647cedfca6ca84f542a0fe36736031905a9639a7f19a3c1e66bfd5080",
+      "assetSymbol": "USDC",
+      "assetDecimals": 6,
+      "maxAmountHuman": "0.001"
+    }
+  ],
+  "error": null
+}
+```
+
+Example paywalled content response (after payment):
+
+```json
+{
+  "ok": true,
+  "network": "starknet-sepolia",
+  "rpcUrl": "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/<key>",
+  "time": "2026-..."
+}
+```
+
 ```bash
 claw-strk x402 request \
   --url <resource-url> \
