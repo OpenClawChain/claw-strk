@@ -8,6 +8,7 @@ import { SEPOLIA_TOKENS, parseTokenSymbol } from './tokens.js';
 import { fetchQuotes, doSwap } from './avnu.js';
 import { starknetId, constants, num } from 'starknet';
 import { approveErc20, parseNetwork, signX402Payment, x402Request } from './x402.js';
+import { Buffer } from 'node:buffer';
 import { loadLendConfig, saveLendConfig, voyagerContractUrl, voyagerTxUrl, DEMO_POOLS, findDemoPool } from './lend.js';
 import { declareAndDeployToken, mintToken, TokenKind } from './token.js';
 import { declareAndDeployNft, mintErc721, parseU256, getErc721Balance } from './nft.js';
@@ -284,6 +285,92 @@ program
           txHash,
           explorerUrl,
           body: text,
+        }, null, 2));
+      })
+  )
+  .addCommand(
+    new Command('verify')
+      .description('Validate an x402 payment against a facilitator (no settlement)')
+      .requiredOption('--url <url>', 'Paywalled resource URL (used to fetch 402 requirements)')
+      .option('--facilitator <url>', 'Facilitator base URL', 'https://stark-facilitator.openclawchain.org/api/facilitator')
+      .option('--payment <base64>', 'Optional: base64 X-PAYMENT value (advanced)')
+      .option('--to <address>', 'Optional: payTo (if not providing --payment)')
+      .option('--token <symbol|address>', 'Optional: token symbol/address (if not providing --payment)')
+      .option('--amount <amount>', 'Optional: amount in human units (if not providing --payment)')
+      .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
+      .option('--deadline <seconds>', 'Deadline seconds from now (default 300)', '300')
+      .action(async (opts) => {
+        const url = String(opts.url);
+        const facilitator = String(opts.facilitator);
+
+        // Fetch requirements (expect 402)
+        const initial = await fetch(url);
+        const status = initial.status;
+        const json = await initial.json().catch(() => null);
+        if (status !== 402) {
+          throw new Error(`Expected 402 from resource. Got status=${status} body=${JSON.stringify(json)}`);
+        }
+
+        const req = json?.accepts?.[0];
+        if (!req) throw new Error('402 response missing accepts[0] requirements');
+
+        const network = parseNetwork(String(opts.network));
+
+        // Either use provided payment header, or generate one from (to, token, amount).
+        let paymentHeader: string;
+        let generatedPayment: any = null;
+
+        if (opts.payment) {
+          paymentHeader = String(opts.payment);
+        } else {
+          if (!opts.to || !opts.token || !opts.amount) {
+            throw new Error('Provide either --payment OR (--to, --token, --amount)');
+          }
+
+          const account = makeAccount();
+
+          const token = (() => {
+            const s = String(opts.token);
+            try {
+              return SEPOLIA_TOKENS[parseTokenSymbol(s)].address;
+            } catch {
+              return s;
+            }
+          })();
+
+          const tokenInfo = Object.values(SEPOLIA_TOKENS).find(t => num.toBigInt(t.address) === num.toBigInt(token));
+          const decimals = tokenInfo?.decimals ?? 18;
+
+          const amountAtomic = BigInt(parseUnits(String(opts.amount), decimals));
+          const deadline = Math.floor(Date.now() / 1000) + Number(opts.deadline);
+
+          const { payment, paymentHeader: ph } = await signX402Payment({
+            account,
+            network,
+            to: String(opts.to),
+            token,
+            amount: amountAtomic.toString(),
+            deadline,
+          });
+
+          paymentHeader = ph;
+          generatedPayment = payment;
+        }
+
+        const verifyRes = await fetch(`${facilitator}/verify`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ x402Version: 1, paymentHeader, paymentRequirements: req }),
+        });
+
+        const verifyJson = await verifyRes.json();
+        console.log(JSON.stringify({
+          facilitator,
+          resourceUrl: url,
+          requirements: req,
+          payment: generatedPayment,
+          paymentHeader,
+          verify: verifyJson,
         }, null, 2));
       })
   );
