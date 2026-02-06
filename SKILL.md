@@ -110,6 +110,7 @@ claw-strk x402 request \
 ```
 
 Notes:
+- `x402 request` first calls the URL normally; if the server replies **402**, it reads the required payment details (`accepts[0]`) and retries with `X-PAYMENT`.
 - `--auto-approve` will approve **exactly** `maxAmountRequired` to the spender (one-time per amount).
 - Override spender/facilitator if needed:
 
