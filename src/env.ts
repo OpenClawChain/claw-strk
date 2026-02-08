@@ -45,6 +45,8 @@ const EnvSchema = z.object({
   STARKNET_PRIVATE_KEY: z.string().min(10),
   // Default RPC: community public endpoint; override if you have your own.
   STARKNET_RPC_URL: z.string().url().default('https://starknet-sepolia-rpc.publicnode.com'),
+  // Default x402 server: OpenClawChain hosted server; override if you have your own.
+  X402_SERVER_URL: z.string().url().default('https://stark-facilitator.openclawchain.org'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

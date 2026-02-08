@@ -1,6 +1,6 @@
 {
   "name": "@openclawchain/claw-strk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A pragmatic Starknet (Sepolia-first) CLI for swaps, x402 paywalled requests, lending, ERC20/ERC721 deployment, and .claw name registry",
   "type": "module",
   "main": "dist/index.js",

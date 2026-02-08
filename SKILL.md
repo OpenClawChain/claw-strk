@@ -14,12 +14,12 @@
 
 ## 1) Install
 
-Once published:
+Install globally from npm:
 
 ```bash
-pnpm add -g @openclawchain/claw-strk
+npm install -g @openclawchain/claw-strk
 # or
-npm i -g @openclawchain/claw-strk
+pnpm add -g @openclawchain/claw-strk
 ```
 
 Run:
@@ -44,6 +44,13 @@ Minimum required:
 STARKNET_ACCOUNT_ADDRESS=0x...
 STARKNET_PRIVATE_KEY=0x...
 STARKNET_RPC_URL=https://starknet-sepolia.g.alchemy.com/v2/<key>
+```
+
+Optional:
+
+```env
+# x402 Server (defaults to OpenClawChain hosted server)
+X402_SERVER_URL=https://stark-facilitator.openclawchain.org
 ```
 
 Create a template:
@@ -101,14 +108,28 @@ claw-strk lend withdraw --pool-id strk-usdc --amount 1
 
 ### C) x402 payment (paywalled HTTP)
 
-Discover requirements (no payment):
+Discover requirements (no payment, defaults to OpenClawChain server):
+
+```bash
+claw-strk x402 discover
+```
+
+Or discover a specific endpoint:
 
 ```bash
 claw-strk x402 discover \
   --url https://stark-facilitator.openclawchain.org/api/protected/chainstatus
 ```
 
-Paywall endpoint example (discover → pay → retry):
+Paywall endpoint example (discover → pay → retry, defaults to OpenClawChain server):
+
+```bash
+claw-strk x402 request \
+  --network sepolia \
+  --auto-approve
+```
+
+Or specify a custom endpoint:
 
 ```bash
 claw-strk x402 request \
@@ -121,7 +142,6 @@ Show only the paywalled content (no JSON wrapper):
 
 ```bash
 claw-strk x402 request \
-  --url https://stark-facilitator.openclawchain.org/api/protected/chainstatus \
   --network sepolia \
   --auto-approve \
   --raw
@@ -131,7 +151,6 @@ Or print JSON + then print body:
 
 ```bash
 claw-strk x402 request \
-  --url https://stark-facilitator.openclawchain.org/api/protected/chainstatus \
   --network sepolia \
   --auto-approve \
   --print-body
@@ -289,8 +308,3 @@ Pool id: `strk-usdc`
 |---|---|---|
 | NFT collection (OpenClawMinion / CLAWSTRK) | MintableERC721 | `0x49782e9d0ce5eb2b1122fdb6de8498a6717389a8ce73768d69c3995c72d1ecd` |
 | `.claw` registry | ClawIdRegistry | `0x18fe5d665fe78d1e9032d85c5e3fd6f99492a608d197f4cb048a2246f7d68eb` |
-
-Repo references:
-- ClawSTRk CLI: https://github.com/OpenClawChain/claw-strk
-- ClawSTRk x402 Server: https://github.com/OpenClawChain/claw-strk-x402-server
-- ClawSTRK Contracts: https://github.com/OpenClawChain/claw-strk-contracts

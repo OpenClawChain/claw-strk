@@ -222,9 +222,11 @@ program
   .addCommand(
     new Command('discover')
       .description('Discover x402 payment requirements for a paywalled resource (no payment)')
-      .requiredOption('--url <url>', 'Paywalled resource URL')
+      .option('--url <url>', 'Paywalled resource URL (default: from X402_SERVER_URL env or https://stark-facilitator.openclawchain.org/api/protected/chainstatus)')
       .action(async (opts) => {
-        const url = String(opts.url);
+        const env = getEnv();
+        const defaultUrl = `${env.X402_SERVER_URL}/api/protected/chainstatus`;
+        const url = opts.url ? String(opts.url) : defaultUrl;
         const res = await fetch(url);
 
         if (res.status === 402) {
@@ -271,7 +273,7 @@ program
   .addCommand(
     new Command('request')
       .description('Make an HTTP request; if 402, auto-sign and retry with X-PAYMENT (optional facilitator verify/settle)')
-      .requiredOption('--url <url>', 'Resource URL')
+      .option('--url <url>', 'Resource URL (default: from X402_SERVER_URL env or https://stark-facilitator.openclawchain.org/api/protected/chainstatus)')
       .option('--method <method>', 'HTTP method (default GET)', 'GET')
       .option('--data <json>', 'JSON body (for POST/PUT)')
       .option('--network <sepolia|mainnet>', 'Network (default: sepolia)', 'sepolia')
@@ -288,10 +290,14 @@ program
       .option('--print-body', 'Also print the response body after the JSON output', false)
       .option('--raw', 'Print only the response body (no JSON wrapper)', false)
       .action(async (opts) => {
+        const env = getEnv();
         const account = makeAccount();
         const network = parseNetwork(String(opts.network));
         const method = String(opts.method).toUpperCase();
         const body = opts.data ? JSON.stringify(JSON.parse(String(opts.data))) : undefined;
+
+        const defaultUrl = `${env.X402_SERVER_URL}/api/protected/chainstatus`;
+        const url = opts.url ? String(opts.url) : defaultUrl;
 
         // Facilitator URL is optional here: most paywalls will settle server-side.
         // If provided, client will call /verify + /settle before fetching the resource.
@@ -303,7 +309,7 @@ program
           : undefined;
 
         const provider = makeProvider();
-        const { response, settlement, requirements, approveTxHash } = await x402Request(String(opts.url), {
+        const { response, settlement, requirements, approveTxHash } = await x402Request(url, {
           provider,
           account,
           network,

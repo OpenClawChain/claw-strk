@@ -1,6 +1,6 @@
-# claw-strk (Starknet Sepolia prototype)
+# claw-strk
 
-`claw-strk` is a **Sepolia-first** Starknet CLI for quickly testing:
+A pragmatic **Starknet (Sepolia-first)** CLI for:
 
 - Swaps via **AVNU**
 - Demo **lending** pool flows
@@ -12,17 +12,17 @@
 
 ---
 
-## 1) Install
+## Installation
 
-Once published:
+Install globally from npm:
 
 ```bash
-pnpm add -g @openclawchain/claw-strk
+npm install -g @openclawchain/claw-strk
 # or
-npm i -g @openclawchain/claw-strk
+pnpm add -g @openclawchain/claw-strk
 ```
 
-Run:
+Then run:
 
 ```bash
 claw-strk --help
@@ -30,7 +30,7 @@ claw-strk --help
 
 ---
 
-## 2) Configure (.env)
+## Configuration
 
 The CLI loads env in this order:
 
@@ -46,6 +46,13 @@ STARKNET_PRIVATE_KEY=0x...
 STARKNET_RPC_URL=https://starknet-sepolia.g.alchemy.com/v2/<key>
 ```
 
+Optional:
+
+```env
+# x402 Server (defaults to OpenClawChain hosted server)
+X402_SERVER_URL=https://stark-facilitator.openclawchain.org
+```
+
 Create a template:
 
 ```bash
@@ -54,7 +61,7 @@ claw-strk init
 
 ---
 
-## 3) CLI examples (mandatory features)
+## CLI Usage
 
 ### A) Swap (AVNU)
 
@@ -178,9 +185,9 @@ claw-strk nft balance --contract <address>
 
 ---
 
-## 4) References
+## References
 
-### 4.1 Supported tokens (swap)
+### Supported tokens (swap)
 
 Starknet Sepolia bridged token addresses:
 
@@ -192,7 +199,7 @@ Starknet Sepolia bridged token addresses:
 - wstETH: `0x030de54c07e57818ae4a1210f2a3018a0b9521b8f8ae5206605684741650ac25`
 - EKUBO: `0x01fad7c03b2ea7fbef306764e20977f8d4eae6191b3a54e4514cc5fc9d19e569`
 
-### 4.2 x402 default server (Sepolia)
+### x402 default server (Sepolia)
 
 - Facilitator base: `https://stark-facilitator.openclawchain.org/api/facilitator`
 - Paywalled base: `https://stark-facilitator.openclawchain.org/api/protected`
@@ -200,20 +207,16 @@ Starknet Sepolia bridged token addresses:
 - Default spender (facilitator account):
   - `0x04dA15eb06D6D01C4907eb4876Cc29BdeF21A84bD71fB34d0369c83b8744D104`
 
-### 4.3 Lending demo pool (Sepolia)
+### Lending demo pool (Sepolia)
 
 Pool id: `strk-usdc`
 
 - Registry: `0x183ca728ea9432536ce728416dcb3126373f18a2e5cd46327a90dc2f1f93e15`
 - Pool: `0x04bdad5b68e73eaa8784a488f02b6ead417a4e5c0472566027908149f115979b`
 
-### 4.4 Deployed contracts (Sepolia)
+### Deployed contracts (Sepolia)
 
 | Feature | Contract | Address |
 |---|---|---|
 | NFT collection (OpenClawMinion / CLAWSTRK) | MintableERC721 | `0x49782e9d0ce5eb2b1122fdb6de8498a6717389a8ce73768d69c3995c72d1ecd` |
 | `.claw` registry | ClawIdRegistry | `0x18fe5d665fe78d1e9032d85c5e3fd6f99492a608d197f4cb048a2246f7d68eb` |
-
-Repo references:
-- Contracts source (Cairo): https://github.com/OpenClawChain/claw-strk-contracts
-- x402 server: https://github.com/OpenClawChain/claw-strk-x402-server
