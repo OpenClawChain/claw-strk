@@ -10,6 +10,11 @@ A pragmatic **Starknet (Sepolia-first)** CLI for:
 
 > This is prototype tooling for **Starknet Sepolia**.
 
+## Resources
+
+- 📺 [Video Demo](https://youtu.be/NgRms4So9eA)
+- 📖 [Documentation](https://bo0.gitbook.io/clawstrk)
+
 ---
 
 ## Installation
